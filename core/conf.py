@@ -1,4 +1,4 @@
-import os    #Comm. Claude:  os e sys (libreria standard) servono per i percorsi dell'exe; avvia.py può ancora importare conf
+import os   
 import sys
 from pathlib import Path
 
@@ -7,10 +7,6 @@ CD_DIR = Path.home()
 # percorsi assoluti dalla cartella del progetto: funzionano da qualsiasi cartella si lanci python
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-#Comm. Claude:  nell'exe (PyInstaller) i file del programma stanno nella cartella d'installazione, che l'utente
-#Comm. Claude:  non deve toccare, e i dati che l'app MODIFICA (circoli aggiunti, coefficienti, output, upload) non
-#Comm. Claude:  possono stare lì. Quindi due radici: RISORSE_DIR (sola lettura, dentro l'exe) e DATI_DIR (scrivibile,
-#Comm. Claude:  una per utente). Da sorgente (python core/app.py) coincidono con la cartella del progetto: nulla cambia.
 CONGELATO = getattr(sys, "frozen", False)             # True dentro l'exe
 if CONGELATO:
     RISORSE_DIR = Path(sys._MEIPASS)                  # <installazione>/_internal
@@ -22,6 +18,7 @@ if CONGELATO:
         DATI_DIR = Path.home() / ".local" / "share" / "TASK"
 else:
     RISORSE_DIR = DATI_DIR = BASE_DIR
+
 DATI_INIZIALI_DIR = RISORSE_DIR / "data"              # nell'exe: copie di partenza, copiate in DB_DIR al primo avvio
 
 DB_DIR = DATI_DIR / 'data'
@@ -112,26 +109,3 @@ LARGHEZZA_COLONNA_DEFAULT = 20
 CATEGORIE_UNDER = ["U10", "U12", "U14", "U16"]
 QUOTA_FIT_UNDER = 4.5
 QUOTA_FIT_OVER = 9.0
-
-# non usato: ordina_tennis / ordina_beach non esistono (e conf.py non può importare da processor/)
-# # Mappi lo sport alle funzioni specifiche o ai parametri che deve usare
-# PIPELINE_SPORT = {
-#     "tennis": {
-#         "usa_coefficiente": False,
-#         "colonna_squadra": "Numero Squadra",
-#         "funzione_ordinamento": ordina_tennis
-#     },
-#     "beach": {
-#         "usa_coefficiente": True,
-#         "colonna_squadra": "Squadra Beach",
-#         "funzione_ordinamento": ordina_beach
-#     }
-# }
-#
-# def configura_pipeline(sport: str):
-#     sport_key = str(sport).strip().lower()
-#
-#     if sport_key not in PIPELINE_SPORT:
-#         raise ValueError(f"Sport sconosciuto: {sport}")
-#
-#     return PIPELINE_SPORT[sport_key]

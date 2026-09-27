@@ -11,19 +11,18 @@ Percorso di un torneo:
     /tennis (GET modulo, POST avvio) -> /elaborazione/<id> -> /stream_elaborazione/<id> (SSE)
     -> /download/<id> -> /get_file/<id>
 """
-#Comm. Claude:  docstring: aggiornati i nomi dei lanciatori (Start TASK.app / Start TASK.vbs)
 import io
 import os
 import secrets
 import sys
 import threading
-import time  #Comm. Claude:  serve al watchdog che chiude il programma quando la pagina si chiude
+import time  
 import traceback
 import webbrowser
 from datetime import datetime
 from pathlib import Path
 
-# con `python3 core/app.py` nel path c'è solo core/: aggiungo la cartella del progetto
+
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -98,16 +97,9 @@ def _firma(risposta):
     risposta.headers["X-FITP-Manager"] = "1"
     return risposta
 
-
-#Comm. Claude:  blocco nuovo (heartbeat + watchdog). Sta qui e non in avvia.py perché questo è il processo
-#Comm. Claude:  che gira nella .venv e serve le pagine. Logica: la pagina manda un ping ogni 2 s; quando si
-#Comm. Claude:  chiude manda un "beacon" di chiusura. Il watchdog spegne il processo se (a) dopo il beacon non
-#Comm. Claude:  arriva un nuovo ping entro ATTESA_DOPO_CHIUSURA (cambiare pagina fa partire anch'esso il beacon,
-#Comm. Claude:  ma la pagina nuova pinga subito), oppure (b) non arrivano ping da SILENZIO_MASSIMO secondi:
-#Comm. Claude:  75 s e non 6 perché Chrome rallenta i timer delle schede in background fino a 1 volta al minuto.
-#Comm. Claude:  Non spegne mai durante un'elaborazione (lavori.in_corso), per non perdere il lavoro.
-ATTESA_DOPO_CHIUSURA = 5   # s tra il beacon di chiusura e lo spegnimento, se nessuna pagina nuova pinga
-SILENZIO_MASSIMO = 75      # s senza ping (browser chiuso di colpo, scheda congelata...)
+## watchdog and heartbeat per la chiusura automatica del processo a chiusura della pagina web
+ATTESA_DOPO_CHIUSURA = 5   #s tra il beacon di chiusura e lo spegnimento, se nessuna pagina nuova pinga
+SILENZIO_MASSIMO = 75      #s senza ping (browser chiuso di colpo, scheda congelata...)
 _ultimo_ping = time.time()        # parte da ora: il browser ha SILENZIO_MASSIMO s per aprire la prima pagina
 _chiusura_richiesta = None        # istante dell'ultimo beacon di chiusura
 
@@ -151,10 +143,6 @@ def _lavoro_attivo():
     return {"lavoro_attivo": lavori.in_corso()}
 
 
-# =============================================================================
-# Aiuti per leggere i form. SECONDA barriera: il browser ha già controllato tutto,
-# ma una richiesta può arrivare anche senza passare dal browser.
-# =============================================================================
 def _scelta(campo: str, ammessi: tuple) -> str:
     """Valore di un radio o di una tendina: deve essere uno di quelli previsti."""
     valore = request.form.get(campo)
@@ -288,7 +276,7 @@ def _pagina_torneo(sport: str):
     if _file_mancanti(sport):                            # file di data/ mancanti: non si parte,
         return redirect(url_for(sport))                  # la pagina GET mostra quali mancano
 
-    # 1) campi del form (prima di salvare qualunque file)       campo HTML -> campo TypeTorneo
+    # campi del form   campo HTML -> dataclass campo TypeTorneo
     inizio, fine = _data("data_inizio"), _data("data_fine")   # data_inizio / data_fine
     if fine < inizio:
         raise ErroreUtente("Err 14: la data di fine torneo è prima della data di inizio.")
@@ -534,8 +522,6 @@ def get_file(id_lavoro):
     return send_file(lavoro.esito["file_output"], as_attachment=True)
 
 
-#Comm. Claude:  il blocco di avvio ora è una funzione: la chiama anche avvia.py dentro l'exe (stesso processo,
-#Comm. Claude:  niente python.exe esterno). Il contenuto è quello di prima, tranne la porta passata come argomento.
 # Avvia il server sulla porta data, apre il browser e fa partire il watchdog; ritorna solo alla chiusura.
 # coll: avvia.main (exe) | __main__ (sviluppo)
 def avvia_server(porta: int) -> None:
@@ -553,8 +539,7 @@ def avvia_server(porta: int) -> None:
         import flask.cli
         logging.getLogger("werkzeug").setLevel(logging.ERROR)
         flask.cli.show_server_banner = lambda *args, **kwargs: None
-    #Comm. Claude:  watchdog solo nel processo che serve davvero le pagine: con debug Flask lancia un processo
-    #Comm. Claude:  padre (solo reloader, non riceve ping) e un figlio con WERKZEUG_RUN_MAIN che serve le pagine.
+        
     if not DEBUG or os.environ.get("WERKZEUG_RUN_MAIN"):
         threading.Thread(target=_watchdog, daemon=True).start()
     # ATTENZIONE (solo FITP_DEBUG=1): se salvi un .py mentre un'elaborazione gira, Flask si riavvia e la perde.

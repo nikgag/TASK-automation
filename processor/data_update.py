@@ -1,5 +1,5 @@
 ## script per aggiornate il DB in automatico:
-# coeff beach cambiano ogni 4 mesi (3 volte l'anno)
+# coeff beach cambiano ogni 6 mesi (gennaio e luglio)
 # la denominazione dei circoli cambia spesso è necessario aggiornare la lista -- demo
 """Aggiornamento dei file di riferimento in data/ a partire dai PDF pubblicati dalla FITP.
 

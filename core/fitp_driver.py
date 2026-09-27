@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
-import subprocess   #Comm. Claude:  per CREATE_NO_WINDOW (chromedriver senza console su Windows)
+import subprocess  
 import sys
 from datetime import datetime
 
@@ -52,8 +52,6 @@ class TesseraDriver:
             options.add_argument("--headless")
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920,1080")
-        #Comm. Claude:  nell'exe per Windows non c'è console: senza CREATE_NO_WINDOW chromedriver.exe aprirebbe
-        #Comm. Claude:  una finestra nera per tutta la durata del controllo tessere
         extra = {"creation_flags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
         self.driver = webdriver.Chrome(
             service=Service(ChromeDriverManager().install(), popen_kw=extra), options=options
