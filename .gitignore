@@ -7,6 +7,8 @@ __pycache__/
 output/
 upload/
 *.tmp
+# Comm. Claude: registro degli avvii senza terminale (avvio.log e avvio.log.old)
+avvio.log*
 
 # Dati FITP riservati: restano solo sul computer di chi usa l'app
 data/circolo_regioni.csv

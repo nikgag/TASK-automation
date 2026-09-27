@@ -1,6 +1,6 @@
 """App Flask del TASK menager: pagine, avvio delle elaborazioni e avanzamento in diretta (SSE).
 
-Avvio per l'UTENTE: doppio clic su "Avvia TASK Manager.command" (Mac) o ".bat" (Windows) -> avvia.py.
+Avvio per l'UTENTE: doppio clic su "Start TASK.app" (Mac) o "Start TASK.vbs" (Windows) -> avvia.py.
 Avvio per lo SVILUPPATORE, dalla cartella del progetto (variabili d'ambiente facoltative):
     python3 core/app.py                       modalità utente: errori mostrati in errore.html
     FITP_DEBUG=1 python3 core/app.py          debugger di Flask + riavvio automatico se cambi un .py
@@ -11,11 +11,13 @@ Percorso di un torneo:
     /tennis (GET modulo, POST avvio) -> /elaborazione/<id> -> /stream_elaborazione/<id> (SSE)
     -> /download/<id> -> /get_file/<id>
 """
+#Comm. Claude:  docstring: aggiornati i nomi dei lanciatori (Start TASK.app / Start TASK.vbs)
 import io
 import os
 import secrets
 import sys
 import threading
+import time  #Comm. Claude:  serve al watchdog che chiude il programma quando la pagina si chiude
 import traceback
 import webbrowser
 from datetime import datetime
@@ -95,6 +97,51 @@ if not DEBUG:
 def _firma(risposta):
     risposta.headers["X-FITP-Manager"] = "1"
     return risposta
+
+
+#Comm. Claude:  blocco nuovo (heartbeat + watchdog). Sta qui e non in avvia.py perché questo è il processo
+#Comm. Claude:  che gira nella .venv e serve le pagine. Logica: la pagina manda un ping ogni 2 s; quando si
+#Comm. Claude:  chiude manda un "beacon" di chiusura. Il watchdog spegne il processo se (a) dopo il beacon non
+#Comm. Claude:  arriva un nuovo ping entro ATTESA_DOPO_CHIUSURA (cambiare pagina fa partire anch'esso il beacon,
+#Comm. Claude:  ma la pagina nuova pinga subito), oppure (b) non arrivano ping da SILENZIO_MASSIMO secondi:
+#Comm. Claude:  75 s e non 6 perché Chrome rallenta i timer delle schede in background fino a 1 volta al minuto.
+#Comm. Claude:  Non spegne mai durante un'elaborazione (lavori.in_corso), per non perdere il lavoro.
+ATTESA_DOPO_CHIUSURA = 5   # s tra il beacon di chiusura e lo spegnimento, se nessuna pagina nuova pinga
+SILENZIO_MASSIMO = 75      # s senza ping (browser chiuso di colpo, scheda congelata...)
+_ultimo_ping = time.time()        # parte da ora: il browser ha SILENZIO_MASSIMO s per aprire la prima pagina
+_chiusura_richiesta = None        # istante dell'ultimo beacon di chiusura
+
+
+# Ping periodico della pagina: finché arriva il programma resta acceso.
+# coll: base.html (script) -> _heartbeat -> _watchdog
+@app.route("/_heartbeat", methods=["POST"])
+def _heartbeat():
+    global _ultimo_ping
+    _ultimo_ping = time.time()
+    return "", 204
+
+
+# Beacon inviato dalla pagina quando si chiude o si cambia pagina.
+# coll: base.html (pagehide) -> _chiudi -> _watchdog
+@app.route("/_chiudi", methods=["POST"])
+def _chiudi():
+    global _chiusura_richiesta
+    _chiusura_richiesta = time.time()
+    return "", 204
+
+
+def _watchdog() -> None:
+    """Thread di sfondo: spegne il processo quando nessuna pagina di TASK è più aperta."""
+    while True:
+        time.sleep(1)
+        adesso = time.time()
+        # confronto i tempi invece di azzerare: un ping arrivato DOPO il beacon annulla la chiusura
+        pagina_chiusa = (_chiusura_richiesta is not None and _ultimo_ping < _chiusura_richiesta
+                         and adesso - _chiusura_richiesta > ATTESA_DOPO_CHIUSURA)
+        pagina_muta = adesso - _ultimo_ping > SILENZIO_MASSIMO
+        if (pagina_chiusa or pagina_muta) and lavori.in_corso() is None:
+            print("\nPagina chiusa: TASK si spegne.", flush=True)
+            os._exit(0)   # esce subito da tutti i thread (anche quelli del server)
 
 
 # In ogni pagina: link "Elaborazione in corso" nella testata finché un lavoro gira.
@@ -503,5 +550,9 @@ if __name__ == "__main__":
         import flask.cli
         logging.getLogger("werkzeug").setLevel(logging.ERROR)
         flask.cli.show_server_banner = lambda *args, **kwargs: None
+    #Comm. Claude:  watchdog solo nel processo che serve davvero le pagine: con debug Flask lancia un processo
+    #Comm. Claude:  padre (solo reloader, non riceve ping) e un figlio con WERKZEUG_RUN_MAIN che serve le pagine.
+    if not DEBUG or os.environ.get("WERKZEUG_RUN_MAIN"):
+        threading.Thread(target=_watchdog, daemon=True).start()
     # ATTENZIONE (solo FITP_DEBUG=1): se salvi un .py mentre un'elaborazione gira, Flask si riavvia e la perde.
     app.run(host="127.0.0.1", port=porta, debug=DEBUG, threaded=True)

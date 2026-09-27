@@ -1,7 +1,7 @@
 """Avvio di TASK con un doppio clic.
 
-Lo lanciano "Start TASK.command" (Mac) e "Start TASK.bat" (Windows): l'utente non
-scrive nessun comando. Usa SOLO la libreria standard di Python, perché gira prima che le librerie
+Lo lanciano "Start TASK.app" (Mac) e "Start TASK.vbs" (Windows) SENZA finestra del terminale: l'utente non
+scrive nessun comando e non vede console. I messaggi finiscono in avvio.log, gli errori in un riquadro. Usa SOLO la libreria standard di Python, perché gira prima che le librerie
 del progetto siano installate.
 
 Cosa fa, in ordine:
@@ -11,8 +11,11 @@ Cosa fa, in ordine:
   3. se FITP Manager è già aperto, riapre solo il browser (niente doppio avvio);
   4. sceglie la porta (5050, o la prima libera dopo) e avvia core/app.py con l'ambiente .venv;
      app.py apre il browser di sistema.
-Per chiudere il programma basta chiudere la finestra del terminale che si apre col doppio clic.
+Per chiudere il programma basta chiudere la pagina nel browser.
 """
+#Comm. Claude:  docstring: lanciatori nuovi (.app/.vbs) senza terminale, quindi niente "chiudi la finestra".
+#Comm. Claude:  docstring aggiornata: ora il processo termina anche chiudendo la pagina (watchdog in core/app.py).
+#Comm. Claude:  heartbeat/watchdog NON stanno qui: avvia.py gira col Python di sistema, senza flask/waitress.
 import hashlib
 import os
 import socket
@@ -20,6 +23,8 @@ import subprocess
 import sys
 import urllib.request
 import venv
+import threading   #Comm. Claude:  per i riquadri Windows che non bloccano
+import time        #Comm. Claude:  data e ora nell'intestazione di ogni avvio in avvio.log
 import webbrowser
 from pathlib import Path
 
@@ -29,21 +34,62 @@ REQUISITI = CARTELLA / "requirements.txt"
 MARCA = VENV / "requisiti_installati.txt"        # impronta del requirements.txt già installato
 WINDOWS = os.name == "nt"
 PYTHON_VENV = VENV / ("Scripts/python.exe" if WINDOWS else "bin/python")
+#Comm. Claude:  senza terminale i print non li vede nessuno: vanno in avvio.log (sovrascritto a ogni avvio)
+LOG = CARTELLA / "avvio.log"                     #Comm. Claude:  in coda (append): un secondo doppio clic con TASK già aperto non deve troncare il log in uso
+LOG_MAX = 1_000_000                               # byte: oltre, il vecchio diventa avvio.log.old
+USCITA: dict = {}                                 # stdout/stderr per pip e app.py: vuoto = come il terminale
+DOVE_DETTAGLI = "Il dettaglio dell'errore è nella finestra del terminale."
+#Comm. Claude:  su Windows ogni sottoprocesso python.exe aprirebbe una console nera: CREATE_NO_WINDOW la evita
+NASCOSTO = {"creationflags": subprocess.CREATE_NO_WINDOW} if WINDOWS else {}
 
 sys.path.insert(0, str(CARTELLA))
 from core import conf                             # conf.py usa solo pathlib: si importa anche qui
 
 
-def messaggio_fatale(testo: str) -> None:
-    """Errore che impedisce l'avvio: lo scrive nella finestra e, sul Mac, lo mostra anche in un riquadro."""
-    print("\n" + "=" * 70 + "\n" + testo + "\n" + "=" * 70)
+#Comm. Claude:  funzione nuova
+def prepara_log() -> None:
+    """Senza terminale (doppio clic su .app/.vbs) i messaggi vanno in avvio.log.
+
+    Con un terminale (sviluppatore che lancia `python3 avvia.py`) resta tutto come prima.
+    """
+    global DOVE_DETTAGLI
+    if sys.stdout is not None and sys.stdout.isatty():
+        return
+    if LOG.is_file() and LOG.stat().st_size > LOG_MAX:
+        LOG.replace(LOG.with_suffix(".log.old"))
+    registro = open(LOG, "a", encoding="utf-8", buffering=1)   # buffering=1: riga per riga, niente perso se crasha
+    registro.write(f"\n===== avvio {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n")
+    sys.stdout = sys.stderr = registro
+    USCITA.update(stdout=registro, stderr=subprocess.STDOUT)
+    DOVE_DETTAGLI = f"Il dettaglio è nel file {LOG.name}, nella cartella del programma."
+
+
+#Comm. Claude:  funzione nuova
+def finestra(testo: str, errore: bool = False, attendi: bool = True) -> None:
+    """Riquadro di sistema (Mac: osascript, Windows: MessageBox), unico canale visibile senza terminale.
+
+    attendi=False: il riquadro resta aperto ma il programma va avanti (avvisi informativi).
+    """
+    print("\n" + "=" * 70 + "\n" + testo + "\n" + "=" * 70, flush=True)   # anche nel log/terminale
     if sys.platform == "darwin":
         testo_as = testo.replace("\\", "\\\\").replace('"', '\\"')
-        subprocess.call(["osascript", "-e",
-                         f'display dialog "{testo_as}" with title "FITP Manager" buttons {{"OK"}} with icon stop'],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
+        icona = "stop" if errore else "note"
+        comando = ["osascript", "-e", f'display dialog "{testo_as}" with title "TASK" '
+                                      f'buttons {{"OK"}} default button 1 with icon {icona}']
+        (subprocess.call if attendi else subprocess.Popen)(comando, stdout=subprocess.DEVNULL,
+                                                           stderr=subprocess.DEVNULL)
+    elif WINDOWS:
+        import ctypes
+        stile = (0x10 if errore else 0x40) | 0x40000     # icona errore/informazione, sempre in primo piano
+        mostra = lambda: ctypes.windll.user32.MessageBoxW(None, testo, "TASK", stile)
+        mostra() if attendi else threading.Thread(target=mostra, daemon=True).start()
+    elif attendi and sys.stdin is not None and sys.stdin.isatty():
         input("\nPremi Invio per chiudere...")
+
+
+def messaggio_fatale(testo: str) -> None:
+    """Errore che impedisce l'avvio: riquadro di errore e uscita."""
+    finestra(testo, errore=True)   #Comm. Claude:  prima solo il Mac aveva il riquadro; Windows usava input(), impossibile senza console
     sys.exit(1)
 
 
@@ -65,13 +111,17 @@ def prepara_ambiente() -> None:
     if MARCA.is_file() and MARCA.read_text().strip() == impronta_requisiti():
         return
     print("Installo le librerie necessarie (flask, pandas, selenium, ...)...\n")
+    if USCITA:   #Comm. Claude:  senza terminale l'utente non vedrebbe nulla per minuti: avviso che non blocca
+        finestra("Preparo TASK: installo le librerie necessarie.\n\n"
+                 "Serve internet e può richiedere qualche minuto: la pagina si aprirà da sola.", attendi=False)
+    ambiente = dict(os.environ, PYTHONIOENCODING="utf-8")   #Comm. Claude:  log in utf-8 anche su Windows (lettere accentate)
     esito = subprocess.call([str(PYTHON_VENV), "-m", "pip", "install", "--disable-pip-version-check",
-                             "-r", str(REQUISITI)])
+                             "-r", str(REQUISITI)], env=ambiente, **USCITA, **NASCOSTO)
     if esito != 0:
         messaggio_fatale("Installazione delle librerie non riuscita.\n"
                          "Controlla la connessione a internet e riapri il programma.\n"
                          "Se continua a non funzionare, cancella la cartella nascosta .venv del progetto e riprova.\n"
-                         "(Il dettaglio dell'errore è nella finestra del terminale.)")
+                         f"({DOVE_DETTAGLI})")   #Comm. Claude:  il terminale può non esserci più
     MARCA.write_text(impronta_requisiti())
     print("\nLibrerie installate.\n")
 
@@ -110,12 +160,16 @@ def avvisa_se_manca_chrome() -> None:
                   os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe")],
     }.get(sys.platform)
     if possibili and not any(Path(p).exists() for p in possibili):
-        print("ATTENZIONE: non trovo Google Chrome. Il controllo delle tessere lo usa:\n"
-              "installalo da https://www.google.com/chrome/ prima di avviare un'elaborazione.\n")
+        finestra("ATTENZIONE: non trovo Google Chrome. Il controllo delle tessere lo usa:\n"   #Comm. Claude:  riquadro, non print
+                 "installalo da https://www.google.com/chrome/ prima di avviare un'elaborazione.", attendi=False)
 
 
 def main() -> None:
     os.chdir(CARTELLA)
+    prepara_log()   #Comm. Claude:  per primo: da qui in poi ogni messaggio ha una destinazione
+    #Comm. Claude:  conferma al lanciatore Mac che sono partito davvero (cartella leggibile, permessi macOS ok)
+    if os.environ.get("TASK_SEGNALE"):
+        Path(os.environ["TASK_SEGNALE"]).touch()
     controlla_python()
     prepara_ambiente()
     porta, gia_aperto = scegli_porta()
@@ -127,14 +181,26 @@ def main() -> None:
     avvisa_se_manca_chrome()
     print("-" * 70)
     print(f"  FITP Manager si apre nel browser: {indirizzo}")
-    print("  Per CHIUDERE il programma chiudi questa finestra.")
+    print("  Per CHIUDERE il programma chiudi la pagina nel browser.")  #Comm. Claude:  il watchdog di core/app.py spegne il processo
     print("-" * 70 + "\n")
-    ambiente = dict(os.environ, FITP_PORTA=str(porta), PYTHONUNBUFFERED="1")
+    ambiente = dict(os.environ, FITP_PORTA=str(porta), PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
     try:
-        sys.exit(subprocess.call([str(PYTHON_VENV), str(CARTELLA / "core" / "app.py")], env=ambiente))
+        codice = subprocess.call([str(PYTHON_VENV), str(CARTELLA / "core" / "app.py")], env=ambiente,
+                                 **USCITA, **NASCOSTO)
     except KeyboardInterrupt:
-        print("\nFITP Manager chiuso.")
+        print("\nTASK chiuso.")
+        return
+    #Comm. Claude:  0 = spento dal watchdog (pagina chiusa). Altro = app.py è crollato: senza terminale va detto a voce alta
+    if codice != 0:
+        messaggio_fatale(f"TASK si è chiuso per un errore (codice {codice}).\n\n{DOVE_DETTAGLI}")
 
 
 if __name__ == "__main__":
-    main()
+    #Comm. Claude:  un errore imprevisto qui, senza terminale, sparirebbe in silenzio: riquadro + traceback nel log, poi rilancio
+    try:
+        main()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        finestra(f"Errore imprevisto all'avvio di TASK:\n{type(e).__name__}: {e}\n\n{DOVE_DETTAGLI}", errore=True)
+        raise

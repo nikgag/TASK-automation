@@ -66,5 +66,16 @@
   </div>
 
   <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {#- Comm. Claude: heartbeat verso il server (vedi _heartbeat/_chiudi/_watchdog in core/app.py).
+      pageshow scatta al caricamento e al ritorno con "indietro"; pagehide alla chiusura o al cambio pagina.
+      sendBeacon parte anche mentre la pagina si sta chiudendo, fetch normale no. -#}
+  <script>
+    (function () {
+      const ping = () => fetch("{{ url_for('_heartbeat') }}", { method: "POST" }).catch(() => {});
+      window.addEventListener("pageshow", ping);
+      setInterval(ping, 2000);
+      window.addEventListener("pagehide", () => navigator.sendBeacon("{{ url_for('_chiudi') }}"));
+    })();
+  </script>
 </body>
 </html>

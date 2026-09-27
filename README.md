@@ -75,8 +75,9 @@ flowchart LR
 
 ```
 ├── avvia.py                      launcher (stdlib only): venv, dependencies, port, browser
-├── Start TASK.command    double-click start on macOS
-├── Start Task.bat        double-click start on Windows
+├── Start TASK.app                double-click start on macOS (no Terminal window)
+├── Start TASK.vbs                double-click start on Windows (no console window)
+├── strumenti/                    avvio_mac.sh (macOS launcher source) and crea_app_mac.sh (rebuilds Start TASK.app)
 ├── requirements.txt
 ├── codici_errori.csv             error / warning catalogue (cause + what to do)
 ├── core/
@@ -108,12 +109,14 @@ flowchart LR
 ### End users
 Requirements: **Python 3.10+**, **Google Chrome**, an internet connection (for the first start and for the FITP checks).
 
-- **macOS**: double-click `Start TASK.command`. The first time, macOS may block it: right-click → *Open* → *Open*.
-- **Windows**: double-click `Start TASK.bat`.
+- **macOS**: double-click `Start TASK.app`. The first time macOS asks whether *Start TASK* may access the folder (Desktop/Documents/Downloads): click **Allow**. If the app was downloaded as a ZIP, macOS may also block it: right-click → *Open* → *Open* (or System Settings → Privacy & Security → *Open Anyway*).
+- **Windows**: double-click `Start TASK.vbs`.
 
-The launcher checks the Python version, creates a `.venv`, and installs the dependencies (again, automatically, when `requirements.txt` changes). If the app is already running, it only reopens the browser; otherwise it starts it on port 5050 (or the next free one). To quit, close the terminal window.
+The launcher checks the Python version, creates a `.venv`, and installs the dependencies (again, automatically, when `requirements.txt` changes). If the app is already running, it only reopens the browser; otherwise it starts it on port 5050 (or the next free one). No terminal window is shown: messages go to `avvio.log`, errors appear in a dialog. To quit, close the browser page: the app shuts down a few seconds later (never while an elaboration is running).
 
 ### Developers
+`Start TASK.app` is a signed AppleScript applet that runs `strumenti/avvio_mac.sh`: after editing that script, rebuild the app on a Mac with `bash strumenti/crea_app_mac.sh` and commit it. A plain script bundle does not work: macOS silently denies it access to Desktop/Documents/Downloads.
+
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
