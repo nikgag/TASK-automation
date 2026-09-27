@@ -1,0 +1,9 @@
+# Librerie necessarie (Python 3.10 o piu' recente).
+# Installazione, dalla cartella del progetto:  python3 -m pip install -r requirements.txt
+flask>=3.0
+pandas>=2.0
+openpyxl>=3.1
+xlrd>=2.0          # vecchi file .xls
+pdfplumber>=0.10
+selenium>=4.15
+webdriver-manager>=4.0

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{#- Avanzamento in diretta (Server-Sent Events):
+    - le righe si aggiungono in un registro;
+    - l'URL dello stream contiene l'id del lavoro: /stream_elaborazione/<id>;
+    - su un errore di rete EventSource riprova da solo e il server riprende dall'ultima riga
+      ricevuta (Last-Event-ID), senza doppioni; si arrende solo se il server risponde "non trovato";
+    - distingue "fine" da "errore": se lo script si ferma mostra messaggio e traceback.
+    Il codice JavaScript è in static/app.js (blocco 8).
+
+    Variabili da Flask:  lavoro  (core.lavori.Lavoro: id, tipo, titolo) -#}
+{% from "_icone.html" import icona %}
+
+{% block titolo %}Elaborazione{% endblock %}
+{% block tema %}{{ lavoro.tipo }}{% endblock %}
+
+{% block contenuto %}
+<header class="pagina-testa">
+  <span class="pagina-icona">{{ icona(lavoro.tipo) }}</span>
+  <div>
+    <p class="sopratitolo">{{ lavoro.titolo or 'Elaborazione' }}</p>
+    {#- lavoro.genere: 'controllo' (tessere) oppure 'aggiornamento' (file di data/) -#}
+    {% set aggiornamento = lavoro.genere == 'aggiornamento' %}
+    <h1 id="diretta-titolo">{{ 'Aggiornamento in corso…' if aggiornamento else 'Controllo tessere in corso…' }}</h1>
+    <p class="lead" id="diretta-intro">
+      {{ 'Qui vedi la lettura dei PDF pagina per pagina.' if aggiornamento else 'Qui vedi ogni tessera appena viene controllata.' }}
+      Se chiudi la pagina l'elaborazione continua: la ritrovi dal link «Elaborazione in corso» in alto.
+    </p>
+  </div>
+</header>
+
+<section class="card diretta"
+         data-stream="{{ url_for('stream_elaborazione', id_lavoro=lavoro.id) }}"
+         data-fine="{{ url_for(lavoro.tipo, aggiornato=lavoro.id) if aggiornamento else url_for('download', id_lavoro=lavoro.id) }}"
+         data-titolo-fine="{{ 'Aggiornamento completato' if aggiornamento else 'Controllo completato' }}">
+  <div class="diretta-testa">
+    <p class="diretta-fase">Avvio…</p>
+    <p class="diretta-conta"></p>
+  </div>
+  <div class="barra indeterminata" role="progressbar" aria-label="Avanzamento" aria-valuemin="0" aria-valuemax="100">
+    <div class="barra-riempimento"></div>
+  </div>
+  <div class="diretta-piede">
+    <span class="diretta-tempo">Tempo trascorso 00:00</span>
+    <span class="diretta-stima"></span>
+  </div>
+  <p class="diretta-connessione" hidden></p>
+  <div class="diretta-fine" hidden>
+    {% if aggiornamento %}
+    <p><strong>Fatto.</strong> Ti riporto alla pagina del beach…</p>
+    <a class="btn btn-primario" href="{{ url_for(lavoro.tipo, aggiornato=lavoro.id) }}">Torna al beach {{ icona('freccia') }}</a>
+    {% else %}
+    <p><strong>Fatto.</strong> Ti porto alla pagina di download…</p>
+    <a class="btn btn-primario" href="{{ url_for('download', id_lavoro=lavoro.id) }}">Vai al download {{ icona('freccia') }}</a>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card esito errore" id="diretta-errore" hidden>
+  <div class="esito-icona">{{ icona('x') }}</div>
+  <h2>L'elaborazione si è fermata</h2>
+  <p class="lead diretta-errore-messaggio"></p>
+  <p class="rimedio-riquadro diretta-errore-rimedio" hidden></p>
+  <div class="azioni">
+    <a class="btn btn-primario" href="{{ url_for(lavoro.tipo) }}">{{ icona('indietro') }} Torna al modulo</a>
+    <a class="btn btn-secondario" href="{{ url_for('index') }}">Home</a>
+  </div>
+  <details class="dettaglio-errore">
+    <summary>Dettaglio tecnico (da inviare a chi mantiene il programma)</summary>
+    <pre class="traccia diretta-errore-dettaglio"></pre>
+  </details>
+</section>
+
+<section class="card">
+  <div class="registro-testa">
+    <h2 class="card-titolo">Registro in diretta</h2>
+    <div class="chips">
+      <span class="chip err" id="conta-err" hidden></span>
+      <span class="chip att" id="conta-att" hidden></span>
+    </div>
+  </div>
+  <ul class="log log-diretta" id="registro-diretta"></ul>
+</section>
+{% endblock %}

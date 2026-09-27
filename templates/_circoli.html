@@ -1,0 +1,71 @@
+{#- Scheda "Circoli" condivisa. La chiave è il NOME DEL CIRCOLO in data/circolo_regioni.csv:
+    i circoli che non ci sono si scaricano in un Excel, si sceglie la provincia e lo si ricarica qui
+    -> le righe vengono aggiunte in fondo al csv (rotta aggiungi_circoli -> data_update.aggiungi_circoli).
+
+    Due usi:
+      download.html      circoli_mancanti = lista dei circoli del torneo non ancora nel csv, id_lavoro
+      tennis/beach.html  circoli = data_update.stato_circoli()  (quanti sono, ultima aggiunta)
+-#}
+{% from "_icone.html" import icona %}
+{% set pagina_finale = circoli_mancanti is defined and circoli_mancanti is not none %}
+
+<section class="card scheda-dati" id="circoli">
+  <div class="scheda-dati-testa">
+    <h2 class="card-titolo">{{ 'Circoli non trovati' if pagina_finale else 'Circoli' }}</h2>
+    {% if pagina_finale %}
+      {% if circoli_mancanti %}<span class="chip att">{{ circoli_mancanti | length }} da mappare</span>
+      {% else %}<span class="chip ok">Aggiunti</span>{% endif %}
+    {% elif circoli is defined and circoli.presente %}<span class="chip ok">{{ circoli.circoli | migliaia }} circoli</span>
+    {% else %}<span class="chip err">Mancante</span>{% endif %}
+  </div>
+
+  {% if pagina_finale %}
+    {% if circoli_mancanti %}
+      <p class="aiuto">
+        Questi circoli non sono in data/circolo_regioni.csv: nel foglio Giocatori hanno regione ND.
+        <strong>Vuoi aggiungerli?</strong> Scarica il file, scegli la provincia di ogni circolo dal menu a
+        tendina (lascia vuoti quelli da non aggiungere) e ricaricalo qui sotto.
+      </p>
+      <div class="chips elenco-circoli">
+        {% for c in circoli_mancanti %}<span class="chip">{{ c }}</span>{% endfor %}
+      </div>
+      <div class="azioni">
+        <a class="btn btn-secondario" href="{{ url_for('circoli_da_mappare', id_lavoro=id_lavoro) }}">{{ icona('giu') }} Scarica i circoli da mappare</a>
+      </div>
+    {% else %}
+      <p class="aiuto">I circoli mancanti ora sono nel file: rilancia l'elaborazione per avere provincia e regione nel foglio Giocatori.</p>
+    {% endif %}
+  {% elif circoli is defined and circoli.presente %}
+    <div class="riepilogo">
+      <div><p class="dato-etichetta">File</p><p class="dato-valore">{{ circoli.file }}</p></div>
+      <div><p class="dato-etichetta">Ultimo aggiornamento</p><p class="dato-valore">{{ circoli.aggiornato.strftime('%d/%m/%Y') }}</p></div>
+      {% if circoli.ultima_aggiunta %}
+        <div><p class="dato-etichetta">Ultima aggiunta</p><p class="dato-valore">{{ circoli.ultima_aggiunta }} circoli</p></div>
+      {% endif %}
+    </div>
+    <p class="aiuto">I circoli non trovati durante un torneo si scaricano dalla pagina finale dell'elaborazione.</p>
+  {% else %}
+    <p class="aiuto">Manca data/{{ circoli.file if circoli is defined else 'circolo_regioni.csv' }}: rimettilo nella cartella data/ (una copia può essere in data/archivio/).</p>
+  {% endif %}
+
+  {% if circoli_mancanti or (not pagina_finale and circoli is defined and circoli.presente) %}
+  <details class="aggiorna-dati" {{ 'open' if pagina_finale }}>
+    <summary>Carica il file dei circoli compilato</summary>
+    <form class="form-guidato" method="post" action="{{ url_for('aggiungi_circoli') }}" enctype="multipart/form-data"
+          data-attesa="Aggiungo i circoli al file…">
+      <div class="campo" data-etichetta="File dei circoli compilato">
+        <label class="dropzone">
+          <input type="file" name="file_circoli" accept=".xlsx" required>
+          <span class="dropzone-icona"><span class="ic-su">{{ icona('su') }}</span><span class="ic-ok">{{ icona('ok') }}</span></span>
+          <span class="dropzone-testo"><strong>Trascina qui il file compilato</strong> oppure clicca per sceglierlo</span>
+          <span class="dropzone-nome">circoli_da_mappare_….xlsx con le province scelte</span>
+        </label>
+      </div>
+      <div class="invio">
+        <button type="submit" class="btn btn-primario">Aggiungi i circoli {{ icona('freccia') }}</button>
+        <p class="mancanti" aria-live="polite"></p>
+      </div>
+    </form>
+  </details>
+  {% endif %}
+</section>

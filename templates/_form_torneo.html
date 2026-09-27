@@ -1,0 +1,163 @@
+{# Form condiviso da tennis.html e beach.html. Richiede la variabile `sport`: 'tennis' | 'beach'.
+--> POST method for page: tennis and beach
+
+    CAMPI INVIATI A FLASK  (request.form / request.files)  ->  campo di TypeTorneo
+    ─────────────────────────────────────────────────────────────────────────────
+    file_iscritti  (file .xlsx/.xls)          -> salvalo su disco, poi file_iscritti = percorso
+    disciplina     'singolo' | 'doppio'       -> doppio = (disciplina == 'doppio')     [tennis e beach]
+    data_inizio    'AAAA-MM-GG'               -> data_inizio  (convertire in 'gg/mm/aaaa')
+    data_fine      'AAAA-MM-GG'               -> data_fine    (convertire in 'gg/mm/aaaa')
+    nome_torneo    testo, può essere ''       -> nome_torneo
+    con_quota      'si' | 'no'                -> con_quota = (con_quota == 'si')
+    quota_under    numero '12.5'              -> quota_under = float(...)   [None se con_quota = no]
+    quota_over     numero '15'                -> quota_over  = float(...)   [None se con_quota = no]
+    gen_ls         'si' | 'no'                -> gen_ls = (gen_ls == 'si')
+    ls_event       'M' | 'F'                  -> ls_event                   [None se gen_ls = no]
+    gen_prog       'si' | 'no'                -> gen_prog = (gen_prog == 'si')
+-#}
+{% from "_icone.html" import icona %}
+
+<form class="form-guidato" method="post" enctype="multipart/form-data"
+      data-attesa="Carico il file e avvio il controllo delle tessere…">
+
+  {# ── 1. File iscritti ──────────────────────────────────────────────── #}
+  <section class="card">
+    <h2 class="card-titolo"><span class="num">1</span> File torneo {{ 'TENNIS' if sport == 'tennis' else 'BEACH' }}</h2>
+    <div class="campo" data-etichetta="file iscritti">
+      <label class="dropzone">
+        <input type="file" name="file_iscritti" accept=".xlsx,.xls" required>
+        <span class="dropzone-icona">
+          <span class="ic-su">{{ icona('su') }}</span><span class="ic-ok">{{ icona('ok') }}</span>
+        </span>
+        <span class="dropzone-testo"><strong>Trascina qui il file</strong> oppure clicca per sceglierlo</span>
+        <span class="dropzone-nome">Excel dell'elenco iscritti esportato da SGAT</span>
+      </label>
+    </div>
+  </section>
+
+  {# ── 2. Competizione ───────────────────────────────────────────────── #}
+  <section class="card">
+    <h2 class="card-titolo"><span class="num">2</span> Competizione</h2>
+
+    {#- Nessuna scelta preimpostata: singolare/doppio cambia il file prodotto. -#}
+    <fieldset class="campo" data-etichetta="singolare o doppio">
+      <legend>Tabellone</legend>
+      <div class="opzioni-card">
+        <label class="opzione">
+          <input type="radio" name="disciplina" value="singolo" required>
+          <span class="opzione-corpo">
+            <span class="opzione-titolo">Singolare</span>
+            <span class="opzione-desc">{{ "Compila l'Entry List BT Singolare" if sport == 'beach' else 'Un giocatore per riga nel foglio Giocatori' }}</span>
+          </span>
+        </label>
+        <label class="opzione">
+          <input type="radio" name="disciplina" value="doppio">
+          <span class="opzione-corpo">
+            <span class="opzione-titolo">Doppio</span>
+            <span class="opzione-desc">Coppie dalla colonna «Numero Squadra»: {{ "compila l'Entry List BT Doppio" if sport == 'beach' else 'squadra e valore coppia nel foglio Giocatori' }}</span>
+          </span>
+        </label>
+      </div>
+    </fieldset>
+
+    <div class="riga-2">
+      <div class="campo" data-etichetta="data di inizio">
+        <label for="data_inizio">Primo giorno di gara</label>
+        <input type="date" id="data_inizio" name="data_inizio" required>
+      </div>
+      <div class="campo" data-etichetta="data di fine">
+        <label for="data_fine">Ultimo giorno di gara</label>
+        <input type="date" id="data_fine" name="data_fine" required data-non-prima-di="data_inizio">
+      </div>
+    </div>
+    <p class="aiuto">Servono per verificare che il certificato medico di ogni giocatore copra tutto il torneo.</p>
+  </section>
+
+  {# ── 3. Foglio contatti ───────────────────────────────────────────── #}
+  <section class="card">
+    <h2 class="card-titolo"><span class="num">3</span> Foglio contatti</h2>
+
+    <div class="campo">
+      <label for="nome_torneo">Nome del torneo <span class="opz">facoltativo</span></label>
+      <input type="text" id="nome_torneo" name="nome_torneo" maxlength="80" autocomplete="off"
+             placeholder="{{ 'Es. Open Città di Bolzano' if sport == 'tennis' else 'Es. Beach Open Caldaro' }}">
+      <p class="aiuto">Compare nel messaggio WhatsApp già scritto: «Buongiorno, sono il GA del Torneo: …»</p>
+    </div>
+
+    {#- Preimpostato: tennis con quota, beach senza (come nei vecchi script). -#}
+    <fieldset class="interruttore">
+      <legend class="vis-nascosto">Calcolare la quota d'iscrizione?</legend>
+      <div class="interruttore-riga">
+        <div aria-hidden="true">
+          <p class="interruttore-titolo">Quota d'iscrizione</p>
+          <p class="aiuto">Aggiunge al foglio la colonna con la quota di ogni giocatore.</p>
+        </div>
+        <div class="segmented">
+          <label><input type="radio" name="con_quota" value="si" {{ 'checked' if sport == 'tennis' }}><span>Sì</span></label>
+          <label><input type="radio" name="con_quota" value="no" {{ 'checked' if sport != 'tennis' }}><span>No</span></label>
+        </div>
+      </div>
+      <div class="dettagli" data-se="con_quota=si">
+        <div class="riga-2">
+          <div class="campo" data-etichetta="quota Under">
+            <label for="quota_under">Quota torneo Under (€)</label>
+            <input type="number" id="quota_under" name="quota_under" value="0" min="0" max="500" step="0.5" inputmode="decimal" required>
+          </div>
+          <div class="campo" data-etichetta="quota Over">
+            <label for="quota_over">Quota torneo Over (€)</label>
+            <input type="number" id="quota_over" name="quota_over" value="0" min="0" max="500" step="0.5" inputmode="decimal" required>
+          </div>
+        </div>
+        <p class="aiuto">Under = categorie U10–U16. La tassa FITP viene sommata in automatico: inserisci solo la quota circolo.</p>
+      </div>
+    </fieldset>
+  </section>
+
+  {# ── 4. File aggiuntivi ───────────────────────────────────────────── #}
+  <section class="card">
+    <h2 class="card-titolo"><span class="num">4</span> File aggiuntivi</h2>
+
+    <fieldset class="interruttore">
+      <legend class="vis-nascosto">Generare il file per il Live Score?</legend>
+      <div class="interruttore-riga">
+        <div aria-hidden="true">
+          <p class="interruttore-titolo">Live Score</p>
+          <p class="aiuto">File CSV con i giocatori da importare nel Live Score.</p>
+        </div>
+        <div class="segmented">
+          <label><input type="radio" name="gen_ls" value="si"><span>Sì</span></label>
+          <label><input type="radio" name="gen_ls" value="no" checked><span>No</span></label>
+        </div>
+      </div>
+      {#- Scelta esplicita M/F: così il programma non deve indovinarlo dal nome del file. -#}
+      <div class="dettagli" data-se="gen_ls=si">
+        <fieldset class="campo" data-etichetta="tabellone maschile o femminile">
+          <legend>Tabellone</legend>
+          <div class="segmented">
+            <label><input type="radio" name="ls_event" value="M" required><span>Maschile</span></label>
+            <label><input type="radio" name="ls_event" value="F"><span>Femminile</span></label>
+          </div>
+        </fieldset>
+      </div>
+    </fieldset>
+
+    <fieldset class="interruttore">
+      <legend class="vis-nascosto">Aggiungere i fogli di programmazione?</legend>
+      <div class="interruttore-riga">
+        <div aria-hidden="true">
+          <p class="interruttore-titolo">Programmazione</p>
+          <p class="aiuto">Copia i fogli «Programmazione» e «OP» dal modello.</p>
+        </div>
+        <div class="segmented">
+          <label><input type="radio" name="gen_prog" value="si"><span>Sì</span></label>
+          <label><input type="radio" name="gen_prog" value="no" checked><span>No</span></label>
+        </div>
+      </div>
+    </fieldset>
+  </section>
+
+  <div class="invio">
+    <button type="submit" class="btn btn-primario">Genera il file Excel {{ icona('freccia') }}</button>
+    <p class="mancanti" aria-live="polite"></p>
+  </div>
+</form>

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{#- Torneo di tennis. Il form è in _form_torneo.html (condiviso col beach). Nel doppio il foglio
+    Giocatori ha in più Squadra e Valore Coppia (scala tennis di core/ranking.py). -#}
+{% from "_icone.html" import icona %}
+
+{% block titolo %}Torneo di tennis{% endblock %}
+{% block tema %}tennis{% endblock %}
+
+{% block contenuto %}
+<header class="pagina-testa">
+  <span class="pagina-icona">{{ icona('tennis') }}</span>
+  <div>
+    <p class="sopratitolo">Torneo</p>
+    <h1>Tennis</h1>
+    <p class="lead">Carica l'elenco iscritti esportato da SGAT e scegli cosa generare.</p>
+  </div>
+</header>
+
+{% include "_circoli.html" %}
+
+{% set sport = 'tennis' %}
+{% include "_form_torneo.html" %}
+{% endblock %}

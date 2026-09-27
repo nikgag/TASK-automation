@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+{#- Layout comune a tutte le pagine (testata, messaggi, attesa, script).
+                  Le altre pagine lo estendono con {% extends "base.html" %} e riempiono i blocchi:
+                    titolo     -> testo della scheda del browser
+                    tema       -> colore d'accento: tennis | beach | campionato (vuoto = blu)
+                    larghezza  -> "stretto" per i form, "largo" per la home
+                    contenuto  -> la pagina vera e propria -#}
+{% from "_icone.html" import icona %}
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titolo %}Home{% endblock %} · T.A.S.K App</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%23c9dc3a'/%3E%3Cpath d='M5.7 5.6c3.1 3.4 3.1 9.4 0 12.8M18.3 5.6c-3.1 3.4-3.1 9.4 0 12.8' fill='none' stroke='%23fff' stroke-width='1.8'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-tema="{% block tema %}{% endblock %}">
+
+  <header class="testata">
+    <a class="marchio" href="{{ url_for('index') }}">
+      <span class="marchio-logo">{{ icona('tennis') }}</span>
+      T.A.S.K
+    </a>
+    <div class="testata-destra">
+      {#- lavoro_attivo arriva da app.py (context_processor): link finché un'elaborazione gira -#}
+      {% if lavoro_attivo is defined and lavoro_attivo and request.endpoint != 'elaborazione' %}
+        <a class="link-lavoro" href="{{ url_for('elaborazione', id_lavoro=lavoro_attivo.id) }}">
+          <span class="pallino" aria-hidden="true"></span><span><span class="solo-largo">Elaborazione </span>in corso</span>
+        </a>
+      {% endif %}
+      {% if request.endpoint != 'index' %}
+        <a class="link-home" href="{{ url_for('index') }}">{{ icona('indietro') }} Home</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="{% block larghezza %}stretto{% endblock %}">
+    {#- Messaggi flash di Flask: flash("testo", "error" | "warning" | "success" | "message") -#}
+    {% with messaggi_flash = get_flashed_messages(with_categories=true) %}
+      {% for categoria, testo in messaggi_flash %}
+        <div class="avviso avviso-{{ categoria }}" role="alert">
+          {{ icona('x' if categoria == 'error' else ('attenzione' if categoria == 'warning' else ('ok' if categoria == 'success' else 'info'))) }}
+          {#- un messaggio può essere un testo semplice oppure {testo, rimedio} -#}
+          {% if testo is mapping %}
+            <p><strong>{{ testo.testo }}</strong>{% if testo.rimedio %}<span class="rimedio">Cosa fare: {{ testo.rimedio }}</span>{% endif %}</p>
+          {% else %}
+            <p>{{ testo }}</p>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% endwith %}
+
+    {% block contenuto %}{% endblock %}
+  </main>
+
+  <footer class="piede">T.A.S.K. · Tennis Automation System Kit for GA</footer>
+
+  {#- Schermata di attesa: la mostra app.js quando parte un'elaborazione -#}
+  <div id="overlay" class="overlay" hidden role="status" aria-live="polite">
+    <div class="overlay-box">
+      <div class="spinner"></div>
+      <p class="overlay-titolo">Elaborazione in corso…</p>
+      <p class="overlay-testo">Attendi senza chiudere la pagina.</p>
+      <p class="overlay-tempo"></p>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

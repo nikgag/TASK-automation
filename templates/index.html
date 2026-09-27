@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{#- Pagina di benvenuto: tre schede, una per sotto-processo (url_for('tennis'), 'beach', 'campionato'). -#}
+{% from "_icone.html" import icona %}
+
+{% block titolo %}Home{% endblock %}
+{% block larghezza %}largo{% endblock %}
+
+{% block contenuto %}
+<section class="hero">
+  <p class="sopratitolo">T.A.S.K Processor systems</p>
+  <h1>Cosa prepariamo oggi?</h1>
+  <p class="lead">
+    Scegli la competizione, carica i file esportati da SGAT e ricevi il file Excel pronto,
+    con tessere e abbinamenti controllati. NB: sanzionato e abilitato al momento NON vengono verificati
+  </p>
+</section>
+
+<nav class="scelte" aria-label="Scegli il tipo di competizione">
+  <a class="app-card" data-tema="tennis" href="{{ url_for('tennis') }}">
+    <span class="app-icona">{{ icona('tennis') }}</span>
+    <span class="app-titolo">Torneo di tennis</span>
+    <span class="app-desc">
+      Dall'elenco iscritti SGAT: giocatori con provincia e regione, verifica di certificato
+      medico e cittadinanza, foglio contatti con link WhatsApp.
+    </span>
+    <span class="app-azione">Inizia {{ icona('freccia') }}</span>
+  </a>
+
+  <a class="app-card" data-tema="beach" href="{{ url_for('beach') }}">
+    <span class="app-icona">{{ icona('beach') }}</span>
+    <span class="app-titolo">Torneo di beach tennis</span>
+    <span class="app-desc">
+      Singolare o doppio: coefficienti beach, ordinamento per il tabellone
+      ed Entry List già compilata.
+    </span>
+    <span class="app-azione">Inizia {{ icona('freccia') }}</span>
+  </a>
+
+  <a class="app-card" data-tema="campionato" href="{{ url_for('campionato') }}">
+    <span class="app-icona">{{ icona('campionato') }}</span>
+    <span class="app-titolo">Campionato a squadre</span>
+    <span class="app-desc">
+      Lista PDF della FITP e dati SGAT: confronto giocatore per giocatore
+      di squadra di casa e ospite, con esito SÌ / NO.
+    </span>
+    <span class="app-azione">Inizia {{ icona('freccia') }}</span>
+  </a>
+</nav>
+
+<ol class="passi" aria-label="Come funziona">
+  <li><span><strong>Carica</strong>i file esportati da SGAT o dalla FITP</span></li>
+  <li><span><strong>Scegli</strong>solo opzioni guidate, niente da scrivere a mano</span></li>
+  <li><span><strong>Scarica</strong>il file Excel con il riepilogo dei controlli</span></li>
+</ol>
+{% endblock %}

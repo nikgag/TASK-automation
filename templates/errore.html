@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{#- Pagina mostrata quando uno script si ferma con un errore ("Err 08: DB circoli non trovato", ecc.).
+    Non nasconde nulla: mostra il messaggio e, sotto, il traceback completo.
+
+    Variabili da Flask:
+      messaggio  testo dell'errore, es. str(e)                     (obbligatoria)
+      dettaglio  traceback completo, es. traceback.format_exc()    (facoltativa)
+      rimedio    "cosa fare" da codici_errori.csv                   (facoltativa) -#}
+{% from "_icone.html" import icona %}
+
+{% block titolo %}Errore{% endblock %}
+
+{% block contenuto %}
+<section class="card esito errore">
+  <div class="esito-icona">{{ icona('x') }}</div>
+  <h1>L'elaborazione si è fermata</h1>
+  <p class="lead">{{ messaggio | default('Errore sconosciuto.') }}</p>
+  {#- suggerimento da codici_errori.csv, se il messaggio ha un codice -#}
+  {% if rimedio %}<p class="rimedio-riquadro"><strong>Cosa fare:</strong> {{ rimedio }}</p>{% endif %}
+  <div class="azioni">
+    {% if request.referrer %}
+      <a class="btn btn-primario" href="{{ request.referrer }}">{{ icona('indietro') }} Torna indietro</a>
+    {% endif %}
+    <a class="btn btn-secondario" href="{{ url_for('index') }}">Home</a>
+  </div>
+</section>
+
+{% if dettaglio %}
+<section class="card">
+  <details>
+    <summary>Dettaglio tecnico (da inviare allo sviluppo)</summary>
+    <pre class="traccia">{{ dettaglio }}</pre>
+  </details>
+</section>
+{% endif %}
+{% endblock %}

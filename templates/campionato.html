@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{#- Campionato a squadre, in DUE fasi sulla stessa pagina.
+
+    FASE 1  (Flask chiama render_template("campionato.html") SENZA `squadre`)
+      Form POST verso la stessa pagina (endpoint 'campionato'):
+        pdf_lista   file .pdf        -> lista FITP; il nome del file dice la serie (es. "Serie B1")
+        file_sgat   file .xlsx/.xls  -> dati SGAT con i fogli Casa / Ospite -> file_iscritti
+
+    FASE 2  (Flask, dopo aver letto il PDF con analizza_pdf_campionato, chiama
+             render_template("campionato.html", squadre=..., campionato=..., n_giocatori=...,
+                             nome_pdf=..., nome_sgat=...)
+      Variabili:  squadre      lista di nomi (obbligatoria)  -> riempie le due tendine
+                  campionato   testo, es. "Serie B1"         (facoltativa)
+                  n_giocatori  numero                        (facoltativa)
+                  nome_pdf / nome_sgat  nomi dei file caricati, solo da mostrare (facoltative)
+      Form POST verso url_for('campionato_genera'):
+        squadra_casa    uno dei nomi di `squadre`   -> squadra_casa
+        squadra_ospite  uno dei nomi di `squadre`   -> squadra_ospite   (diversa da casa)
+        data_incontro   'AAAA-MM-GG'                -> data_inizio (convertire in 'gg/mm/aaaa')
+-#}
+{% from "_icone.html" import icona %}
+
+{% block titolo %}Campionato a squadre{% endblock %}
+{% block tema %}campionato{% endblock %}
+
+{% block contenuto %}
+<header class="pagina-testa">
+  <span class="pagina-icona">{{ icona('campionato') }}</span>
+  <div>
+    <p class="sopratitolo">Campionato a squadre</p>
+    <h1>Controllo liste</h1>
+    <p class="lead">Confronta la lista FITP con i dati SGAT per la squadra di casa e per quella ospite.</p>
+  </div>
+</header>
+
+{% set fase = 1 if squadre is not defined else 2 %}
+<ol class="stepper" aria-label="Avanzamento">
+  <li class="{{ 'attivo' if fase == 1 else 'fatto' }}"><span>Carica i file</span></li>
+  <li class="{{ 'attivo' if fase == 2 }}"><span>Scegli l'incontro</span></li>
+  <li><span>Scarica</span></li>
+</ol>
+
+{% if fase == 1 %}
+{# ═════════════════════ FASE 1: caricamento file ═════════════════════ #}
+<form class="form-guidato" method="post" enctype="multipart/form-data"
+      data-attesa="Sto leggendo la lista PDF e cercando le squadre…">
+
+  <section class="card">
+    <h2 class="card-titolo"><span class="num">1</span> Lista giocatori FITP</h2>
+    <div class="campo" data-etichetta="lista PDF">
+      <label class="dropzone">
+        {#- data-controllo-nome: se il nome del file non contiene "Serie A/B" compare l'avviso sotto -#}
+        <input type="file" name="pdf_lista" accept=".pdf" required data-controllo-nome="SERIE[ _-]*[AB]">
+        <span class="dropzone-icona">
+          <span class="ic-su">{{ icona('su') }}</span><span class="ic-ok">{{ icona('ok') }}</span>
+        </span>
+        <span class="dropzone-testo"><strong>Trascina qui il PDF</strong> oppure clicca per sceglierlo</span>
+        <span class="dropzone-nome">Lista scaricata dal sito FITP (.pdf)</span>
+      </label>
+      <div class="avviso avviso-att dropzone-avviso" hidden>
+        {{ icona('attenzione') }}
+        <p><strong>Nel nome del file non trovo la serie.</strong>
+          Il programma la legge dal nome (es. «…Serie B1…», «…Serie A2 playoff…»): senza, le colonne
+          specifiche della Serie A non verranno aggiunte. Se puoi, usa il file con il nome originale.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="card-titolo"><span class="num">2</span> Dati SGAT</h2>
+    <div class="campo" data-etichetta="file SGAT">
+      <label class="dropzone">
+        <input type="file" name="file_sgat" accept=".xlsx,.xls" required>
+        <span class="dropzone-icona">
+          <span class="ic-su">{{ icona('su') }}</span><span class="ic-ok">{{ icona('ok') }}</span>
+        </span>
+        <span class="dropzone-testo"><strong>Trascina qui il file Excel</strong> oppure clicca per sceglierlo</span>
+        <span class="dropzone-nome">Excel SGAT con i fogli «Casa» e «Ospite»</span>
+      </label>
+    </div>
+    {#- il modello Excel con fogli e colonne giusti: route modello_sgat -#}
+    <p class="aiuto">Colonne richieste: Tessera, Cognome, Nome (Classifica facoltativa).
+      <a href="{{ url_for('modello_sgat') }}">Scarica il modello Excel</a> se il tuo file ha un formato diverso.</p>
+  </section>
+
+  <div class="invio">
+    <button type="submit" class="btn btn-primario">Leggi le squadre {{ icona('freccia') }}</button>
+    <p class="mancanti" aria-live="polite"></p>
+  </div>
+</form>
+
+{% else %}
+{# ═════════════════════ FASE 2: scelta dell'incontro ═════════════════════ #}
+<section class="card">
+  <div class="riepilogo">
+    <div>
+      <p class="dato-etichetta">Campionato</p>
+      <p class="dato-valore">{{ campionato | default('—', true) }}</p>
+    </div>
+    <div>
+      <p class="dato-etichetta">Squadre trovate</p>
+      <p class="dato-valore">{{ squadre | length }}</p>
+    </div>
+    {% if n_giocatori is defined %}
+    <div>
+      <p class="dato-etichetta">Giocatori in lista</p>
+      <p class="dato-valore">{{ n_giocatori }}</p>
+    </div>
+    {% endif %}
+    {#- quanti giocatori ha letto dal file SGAT, già controllato al caricamento -#}
+    {% if sgat_righe is defined %}
+    <div>
+      <p class="dato-etichetta">File SGAT</p>
+      <p class="dato-valore">Casa {{ sgat_righe.casa }} · Ospite {{ sgat_righe.ospite }}</p>
+    </div>
+    {% endif %}
+    <a class="btn btn-testo" href="{{ url_for('campionato') }}">{{ icona('indietro') }} Cambia file</a>
+  </div>
+  {% if nome_pdf or nome_sgat %}
+    <p class="nome-file">{{ nome_pdf }}{% if nome_pdf and nome_sgat %} · {% endif %}{{ nome_sgat }}</p>
+  {% endif %}
+</section>
+
+{#- "sconosciuto" è TIPO_ND di campionato.py: la serie non è stata riconosciuta dal nome del file -#}
+{% if campionato is defined and campionato and campionato.startswith('sconosciuto') %}
+<div class="avviso avviso-att">
+  {{ icona('attenzione') }}
+  <p><strong>Serie non riconosciuta.</strong>
+    Il nome del PDF non contiene la serie: il file verrà generato con le sole colonne di base.
+    Se è una lista di Serie A, torna indietro e carica il file con il nome originale.</p>
+</div>
+{% endif %}
+
+{% if squadre | length < 2 %}
+{#- Con meno di due squadre non si può formare un incontro: niente form, niente errore dopo. -#}
+<div class="avviso avviso-err">
+  {{ icona('x') }}
+  <p><strong>Nel PDF {{ 'non ho trovato nessuna squadra' if squadre | length == 0 else 'ho trovato una sola squadra' }}.</strong>
+    Per l'incontro servono casa e ospite nella stessa lista. Controlla di aver caricato la lista giusta.</p>
+</div>
+<div class="invio">
+  <a class="btn btn-secondario" href="{{ url_for('campionato') }}">{{ icona('indietro') }} Carica un altro PDF</a>
+</div>
+
+{% else %}
+<form class="form-guidato" method="post" action="{{ url_for('campionato_genera') }}"
+      data-attesa="Rileggo la lista e avvio il controllo delle tessere…">
+
+  <section class="card">
+    <h2 class="card-titolo"><span class="num">1</span> Incontro</h2>
+    {#- Le tendine contengono SOLO le squadre lette dal PDF; la squadra scelta da una parte
+        diventa grigia nell'altra (app.js, data-diversa-da). -#}
+    <div class="incontro">
+      <div class="campo" data-etichetta="squadra di casa">
+        <label for="squadra_casa"><span class="etichetta-ruolo">Casa</span>Squadra di casa</label>
+        <select id="squadra_casa" name="squadra_casa" required data-diversa-da="squadra_ospite">
+          <option value="" disabled selected>Scegli la squadra…</option>
+          {% for s in squadre %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <span class="vs" aria-hidden="true">VS</span>
+      <div class="campo" data-etichetta="squadra ospite">
+        <label for="squadra_ospite"><span class="etichetta-ruolo ospite">Ospite</span>Squadra ospite</label>
+        <select id="squadra_ospite" name="squadra_ospite" required data-diversa-da="squadra_casa">
+          <option value="" disabled selected>Scegli la squadra…</option>
+          {% for s in squadre %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="card-titolo"><span class="num">2</span> Data dell'incontro</h2>
+    <div class="campo" data-etichetta="data dell'incontro">
+      <label for="data_incontro">Giorno dell'incontro</label>
+      <input type="date" id="data_incontro" name="data_incontro" required>
+      <p class="aiuto">Il certificato medico di ogni giocatore deve essere valido in questa data.</p>
+    </div>
+  </section>
+
+  <div class="invio">
+    <button type="submit" class="btn btn-primario">Genera il file Excel {{ icona('freccia') }}</button>
+    <p class="mancanti" aria-live="polite"></p>
+  </div>
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}

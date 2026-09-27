@@ -1,0 +1,3 @@
+Lista di cose da fare per finire il lavoro:
+
+1) Api (key) fogli excel chiamate diverse possono generare problemi (tra tornei e cs)

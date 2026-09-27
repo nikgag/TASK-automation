@@ -1,0 +1,21 @@
+# Ambiente Python e cache
+.venv/
+__pycache__/
+*.pyc
+
+# File generati dall'app (contengono i dati degli iscritti)
+output/
+upload/
+*.tmp
+
+# Dati FITP riservati: restano solo sul computer di chi usa l'app
+data/circolo_regioni.csv
+data/archivio/
+
+# Backup locali
+_backup_*/
+
+# Sistema ed editor
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carica il tuo file</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="content">
+        <p class="title">Carica l'elenco iscritti scaricato da SGAT </p>
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="file" required>
+
+        <!-- Campo nascosto per l'app scelta -->
+        <input type="hidden" name="app" value="{{ request.args.get('app') }}">
+
+        <!-- Campo nascosto per la competizione (solo se presente) -->
+        {% if request.args.get('competizione') %}
+            <input type="hidden" name="competizione" value="{{ request.args.get('competizione') }}">
+        {% endif %}
+
+        <button type="submit">Carica</button>
+    </form>
+    </div>
+</body>
+</html>

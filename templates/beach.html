@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{#Pagina torneo di beach tennis. Il form è in _form_torneo.html (condiviso col
+                  tennis); qui in più compare la scelta Singolare / Doppio.
+                  Route Flask attesa: endpoint 'beach', metodi GET (mostra) e POST (elabora). -#}
+{% from "_icone.html" import icona %}
+
+{% block titolo %}Torneo di beach tennis{% endblock %}
+{% block tema %}beach{% endblock %}
+
+{% block contenuto %}
+<header class="pagina-testa">
+  <span class="pagina-icona">{{ icona('beach') }}</span>
+  <div>
+    <p class="sopratitolo">Torneo</p>
+    <h1>Beach tennis</h1>
+    <p class="lead">
+      Carica l'elenco iscritti SGAT: il programma assegna i coefficienti beach,
+      ordina i giocatori, controlla le tessere e compila l'Entry List.
+    </p>
+  </div>
+</header>
+
+{#-Scheda del file coefficienti: elaborato da data_update.py -#}
+{% if coeff is defined %}
+<section class="card scheda-dati" id="coefficienti">
+  <div class="scheda-dati-testa">
+    <h2 class="card-titolo">Coefficienti e classifiche beach</h2>
+    {% if not coeff.presente %}<span class="chip err">Mancante</span>
+    {% elif coeff.da_aggiornare %}<span class="chip att">Da aggiornare</span>
+    {% else %}<span class="chip ok">Aggiornato</span>{% endif %}
+  </div>
+
+  {% if coeff.presente %}
+  <div class="riepilogo">
+    <div><p class="dato-etichetta">File</p><p class="dato-valore">{{ coeff.file }}</p></div>
+    <div><p class="dato-etichetta">Ultimo aggiornamento</p><p class="dato-valore">{{ coeff.aggiornato.strftime('%d/%m/%Y') }}</p></div>
+    <div>
+      <p class="dato-etichetta">Giocatori</p>
+      <p class="dato-valore">{{ coeff.righe | migliaia }}
+        {% if coeff.uomini is not none %}<span class="dato-dettaglio">({{ coeff.uomini | migliaia }} uomini · {{ coeff.donne | migliaia }} donne)</span>{% endif %}</p>
+    </div>
+  </div>
+  <p class="aiuto">
+    {{ coeff.fonte }}{% if coeff.pdf %}: {{ coeff.pdf | join(' + ') }}{% endif %}.
+    {% if coeff.da_aggiornare %}Sono passati {{ coeff.giorni }} giorni dall'ultimo caricamento: le liste cambiano 2 volte all'anno.{% endif %}
+  </p>
+  {% else %}
+  <p class="aiuto">Manca data/{{ coeff.file }}: caricalo dai PDF qui sotto prima di elaborare un torneo beach.</p>
+  {% endif %}
+
+  <details class="aggiorna-dati" {{ 'open' if not coeff.presente or coeff.da_aggiornare }}>
+    <summary>Aggiorna con le nuove classifiche FITP (PDF)</summary>
+    <div class="avviso">
+      {{ icona('info') }}
+      <p><strong>Il file dei coefficienti è l'unione dei file femminile e maschile.</strong>
+        Carica il PDF unito (femminile + maschile), oppure seleziona insieme i due PDF scaricati dalla FITP:
+        l'unione la fa il programma. Il file attuale viene sostituito solo se la lettura va a buon fine,
+        e ne resta una copia in data/archivio/.</p>
+    </div>
+    <form class="form-guidato" method="post" action="{{ url_for('aggiorna_coeff_beach') }}" enctype="multipart/form-data"
+          data-attesa="Carico il PDF e avvio la lettura delle classifiche…">
+      {#- un solo campo: 1 file (PDF unito) oppure 2 file (i PDF FITP separati), max 2 -#}
+      <div class="campo" data-etichetta="PDF delle classifiche">
+        <label class="dropzone">
+          <input type="file" name="pdf_classifiche" accept=".pdf" multiple data-max-file="2" required>
+          <span class="dropzone-icona"><span class="ic-su">{{ icona('su') }}</span><span class="ic-ok">{{ icona('ok') }}</span></span>
+          <span class="dropzone-testo"><strong>Trascina qui il PDF unito</strong> oppure i due PDF FITP insieme</span>
+          <span class="dropzone-nome">Classifiche beach FITP: femminile + maschile (.pdf)</span>
+        </label>
+      </div>
+      <div class="invio">
+        <button type="submit" class="btn btn-primario">Aggiorna i coefficienti {{ icona('freccia') }}</button>
+        <p class="mancanti" aria-live="polite"></p>
+      </div>
+    </form>
+  </details>
+</section>
+{% endif %}
+
+{% include "_circoli.html" %}
+
+{% set sport = 'beach' %}
+{% include "_form_torneo.html" %}
+{% endblock %}

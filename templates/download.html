@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{#- Pagina finale: ogni elaborazione ha un id, i pulsanti puntano a /get_file/<id>.
+
+    Variabili da Flask (vedi rotta `download` in core/app.py):
+      file_ready  True / False                              (obbligatoria)
+      id_lavoro   id dell'elaborazione                      (obbligatoria se file_ready)
+      esito       il dict restituito da main.torneo(...)    (facoltativa)
+      messaggi    lista delle righe passate a `log`         (facoltativa)
+      tema        'tennis' | 'beach' | 'campionato'         (facoltativa, solo per il colore)
+      circoli_mancanti  circoli non ancora in circolo_regioni.csv (None = campionato) -> _circoli.html
+    Funzione globale usata:  livello_log(riga) -> 'err' | 'att' | 'info'  (core/lavori.py)
+-#}
+{% from "_icone.html" import icona %}
+
+{% block titolo %}{{ 'File pronto' if file_ready else 'Nessun file' }}{% endblock %}
+{% block tema %}{{ tema | default('') }}{% endblock %}
+
+{% block contenuto %}
+{% if file_ready %}
+
+<section class="card esito">
+  <div class="esito-icona">{{ icona('ok') }}</div>
+  <h1>File pronto</h1>
+  {% if esito and esito.file_output %}
+    {#- solo il nome del file, senza cartelle (funziona con / e con \ di Windows) -#}
+    <p class="nome-file">{{ (esito.file_output | string).replace('\\', '/').split('/') | last }}</p>
+  {% endif %}
+  <div class="azioni">
+    <a class="btn btn-primario" href="{{ url_for('get_file', id_lavoro=id_lavoro) }}">{{ icona('giu') }} Scarica il file Excel</a>
+    {% if esito and esito.live_score %}
+      <a class="btn btn-secondario" href="{{ url_for('get_file', id_lavoro=id_lavoro, tipo='live_score') }}">{{ icona('giu') }} Scarica il Live Score (CSV)</a>
+    {% endif %}
+  </div>
+</section>
+
+{#- circoli del torneo non trovati in circolo_regioni.csv: file da compilare e ricaricare -#}
+{% if circoli_mancanti is defined and circoli_mancanti is not none and (circoli_mancanti or esito.circoli_mancanti) %}
+  {% include "_circoli.html" %}
+{% endif %}
+
+{% if esito %}
+<section class="card">
+  <h2 class="card-titolo">Riepilogo</h2>
+  <div class="riepilogo">
+    {% if esito.giocatori is defined %}
+      <div><p class="dato-etichetta">Giocatori</p><p class="dato-valore">{{ esito.giocatori }}</p></div>
+    {% endif %}
+    {% if esito.casa_cs %}
+      <div><p class="dato-etichetta">Casa</p><p class="dato-valore">{{ esito.casa_cs }}</p></div>
+    {% endif %}
+    {% if esito.ospite_cs %}
+      <div><p class="dato-etichetta">Ospite</p><p class="dato-valore">{{ esito.ospite_cs }}</p></div>
+    {% endif %}
+    {% if esito.live_score %}
+      <div><p class="dato-etichetta">Live Score</p>
+        <p class="dato-valore">{{ esito.live_score.righe }} righe · {{ 'Maschile' if esito.live_score.evento == 'M' else 'Femminile' }}</p></div>
+    {% endif %}
+  </div>
+  {% if esito.fogli %}
+    <div class="fogli-creati">
+      <p class="dato-etichetta">Fogli creati</p>
+      <div class="chips">
+        {% for f in esito.fogli %}<span class="chip">{{ f }}</span>{% endfor %}
+      </div>
+    </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if messaggi %}
+{#- Colore di ogni riga deciso da livello_log (core/lavori.py): la stessa regola
+    usata dalla pagina in diretta, scritta una volta sola in Python. -#}
+{% set righe = [] %}
+{% set conta = namespace(err=0, att=0) %}
+{% for m in messaggi %}
+  {% set t = m | string %}
+  {% set livello = livello_log(t) %}
+  {% if livello == 'err' %}{% set conta.err = conta.err + 1 %}{% elif livello == 'att' %}{% set conta.att = conta.att + 1 %}{% endif %}
+  {% set _ = righe.append((livello, t)) %}
+{% endfor %}
+<section class="card">
+  <div class="registro-testa">
+    <h2 class="card-titolo">Registro dei controlli</h2>
+    <div class="chips">
+      {% if conta.err %}<span class="chip err">{{ conta.err }} {{ 'errore' if conta.err == 1 else 'errori' }}</span>{% endif %}
+      {% if conta.att %}<span class="chip att">{{ conta.att }} da controllare</span>{% endif %}
+      {% if not conta.err and not conta.att %}<span class="chip">Nessun problema segnalato</span>{% endif %}
+    </div>
+  </div>
+  {% if conta.err or conta.att %}
+  <div class="segmented filtro-log" role="radiogroup" aria-label="Filtro del registro">
+    <label><input type="radio" name="filtro_log" value="tutti" data-filtro-log="registro" checked><span>Tutto</span></label>
+    <label><input type="radio" name="filtro_log" value="problemi" data-filtro-log="registro"><span>Solo da controllare</span></label>
+  </div>
+  {% endif %}
+  <ul class="log" id="registro">
+    {% for livello, t in righe %}<li class="{{ livello }}">{{ t }}</li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<div class="azioni">
+  <a class="btn btn-secondario" href="{{ url_for('index') }}">{{ icona('indietro') }} Nuova elaborazione</a>
+</div>
+
+{% else %}
+
+<section class="card esito errore">
+  <div class="esito-icona">{{ icona('x') }}</div>
+  <h1>Nessun file da scaricare</h1>
+  <p class="lead">L'elaborazione non ha prodotto un file, oppure la sessione è scaduta. Ricomincia dalla home.</p>
+  <div class="azioni">
+    <a class="btn btn-primario" href="{{ url_for('index') }}">{{ icona('indietro') }} Torna alla home</a>
+  </div>
+</section>
+
+{% endif %}
+{% endblock %}
