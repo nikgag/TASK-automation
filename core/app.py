@@ -534,10 +534,13 @@ def get_file(id_lavoro):
     return send_file(lavoro.esito["file_output"], as_attachment=True)
 
 
-if __name__ == "__main__":
+#Comm. Claude:  il blocco di avvio ora è una funzione: la chiama anche avvia.py dentro l'exe (stesso processo,
+#Comm. Claude:  niente python.exe esterno). Il contenuto è quello di prima, tranne la porta passata come argomento.
+# Avvia il server sulla porta data, apre il browser e fa partire il watchdog; ritorna solo alla chiusura.
+# coll: avvia.main (exe) | __main__ (sviluppo)
+def avvia_server(porta: int) -> None:
     if os.environ.get("FITP_DRIVER_FINTO") == "1":
         print("\n" + "!" * 72 + "\n  ATTENZIONE: driver FINTO attivo. I controlli delle tessere sono INVENTATI.\n" + "!" * 72 + "\n")
-    porta = int(os.environ.get("FITP_PORTA") or conf.PORTA_GUI)
     indirizzo = f"http://127.0.0.1:{porta}"
     # Apro il browser di sistema una volta sola: con debug Flask lancia un secondo processo
     # (quello con WERKZEUG_RUN_MAIN) che si riavvia a ogni modifica dei .py; il browser lo apre il primo.
@@ -556,3 +559,7 @@ if __name__ == "__main__":
         threading.Thread(target=_watchdog, daemon=True).start()
     # ATTENZIONE (solo FITP_DEBUG=1): se salvi un .py mentre un'elaborazione gira, Flask si riavvia e la perde.
     app.run(host="127.0.0.1", port=porta, debug=DEBUG, threaded=True)
+
+
+if __name__ == "__main__":
+    avvia_server(int(os.environ.get("FITP_PORTA") or conf.PORTA_GUI))

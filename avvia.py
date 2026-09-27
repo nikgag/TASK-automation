@@ -4,6 +4,9 @@ Lo lanciano "Start TASK.app" (Mac) e "Start TASK.vbs" (Windows) SENZA finestra d
 scrive nessun comando e non vede console. I messaggi finiscono in avvio.log, gli errori in un riquadro. Usa SOLO la libreria standard di Python, perché gira prima che le librerie
 del progetto siano installate.
 
+Nell'exe per Windows (PyInstaller, vedi strumenti/) è il punto d'ingresso: salta .venv e pip, copia i dati
+iniziali nella cartella dell'utente e avvia il server nello stesso processo.  #Comm. Claude:  paragrafo nuovo
+
 Cosa fa, in ordine:
   1. controlla che Python sia almeno 3.10;
   2. al primo avvio crea l'ambiente .venv/ nella cartella del progetto e installa requirements.txt
@@ -18,6 +21,7 @@ Per chiudere il programma basta chiudere la pagina nel browser.
 #Comm. Claude:  heartbeat/watchdog NON stanno qui: avvia.py gira col Python di sistema, senza flask/waitress.
 import hashlib
 import os
+import shutil   #Comm. Claude:  per copiare i dati iniziali nell'exe
 import socket
 import subprocess
 import sys
@@ -35,15 +39,17 @@ MARCA = VENV / "requisiti_installati.txt"        # impronta del requirements.txt
 WINDOWS = os.name == "nt"
 PYTHON_VENV = VENV / ("Scripts/python.exe" if WINDOWS else "bin/python")
 #Comm. Claude:  senza terminale i print non li vede nessuno: vanno in avvio.log (sovrascritto a ogni avvio)
-LOG = CARTELLA / "avvio.log"                     #Comm. Claude:  in coda (append): un secondo doppio clic con TASK già aperto non deve troncare il log in uso
-LOG_MAX = 1_000_000                               # byte: oltre, il vecchio diventa avvio.log.old
 USCITA: dict = {}                                 # stdout/stderr per pip e app.py: vuoto = come il terminale
 DOVE_DETTAGLI = "Il dettaglio dell'errore è nella finestra del terminale."
 #Comm. Claude:  su Windows ogni sottoprocesso python.exe aprirebbe una console nera: CREATE_NO_WINDOW la evita
 NASCOSTO = {"creationflags": subprocess.CREATE_NO_WINDOW} if WINDOWS else {}
 
 sys.path.insert(0, str(CARTELLA))
-from core import conf                             # conf.py usa solo pathlib: si importa anche qui
+from core import conf                             # conf.py usa solo la libreria standard: si importa anche qui
+#Comm. Claude:  il log sta tra i dati (cartella del progetto da sorgente, AppData/Local/TASK nell'exe); in coda (append):
+#Comm. Claude:  un secondo doppio clic con TASK già aperto non deve troncare il log in uso
+LOG = conf.DATI_DIR / "avvio.log"
+LOG_MAX = 1_000_000                               # byte: oltre, il vecchio diventa avvio.log.old
 
 
 #Comm. Claude:  funzione nuova
@@ -55,13 +61,14 @@ def prepara_log() -> None:
     global DOVE_DETTAGLI
     if sys.stdout is not None and sys.stdout.isatty():
         return
+    LOG.parent.mkdir(parents=True, exist_ok=True)   #Comm. Claude:  nell'exe al primo avvio la cartella dati non esiste ancora
     if LOG.is_file() and LOG.stat().st_size > LOG_MAX:
         LOG.replace(LOG.with_suffix(".log.old"))
     registro = open(LOG, "a", encoding="utf-8", buffering=1)   # buffering=1: riga per riga, niente perso se crasha
     registro.write(f"\n===== avvio {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n")
     sys.stdout = sys.stderr = registro
     USCITA.update(stdout=registro, stderr=subprocess.STDOUT)
-    DOVE_DETTAGLI = f"Il dettaglio è nel file {LOG.name}, nella cartella del programma."
+    DOVE_DETTAGLI = f"Il dettaglio è nel file:\n{LOG}"   #Comm. Claude:  percorso completo: nell'exe non è nella cartella del programma
 
 
 #Comm. Claude:  funzione nuova
@@ -164,14 +171,30 @@ def avvisa_se_manca_chrome() -> None:
                  "installalo da https://www.google.com/chrome/ prima di avviare un'elaborazione.", attendi=False)
 
 
+#Comm. Claude:  funzione nuova. Nell'exe i file di data/ inclusi nell'installer sono solo copie di partenza:
+#Comm. Claude:  li copio nella cartella dati solo se mancano, così non sovrascrivo MAI circoli aggiunti o coefficienti aggiornati.
+def copia_dati_iniziali() -> None:
+    conf.DB_DIR.mkdir(parents=True, exist_ok=True)
+    for sorgente in conf.DATI_INIZIALI_DIR.iterdir():
+        destinazione = conf.DB_DIR / sorgente.name
+        if sorgente.is_file() and not destinazione.exists():
+            shutil.copy2(sorgente, destinazione)
+            print(f"Primo avvio: copiato {sorgente.name} in {conf.DB_DIR}")
+
+
 def main() -> None:
-    os.chdir(CARTELLA)
+    #Comm. Claude:  nell'exe si lavora nella cartella dati; da sorgente nella cartella del progetto (come prima)
+    conf.DATI_DIR.mkdir(parents=True, exist_ok=True)
+    os.chdir(conf.DATI_DIR if conf.CONGELATO else CARTELLA)
     prepara_log()   #Comm. Claude:  per primo: da qui in poi ogni messaggio ha una destinazione
     #Comm. Claude:  conferma al lanciatore Mac che sono partito davvero (cartella leggibile, permessi macOS ok)
     if os.environ.get("TASK_SEGNALE"):
         Path(os.environ["TASK_SEGNALE"]).touch()
-    controlla_python()
-    prepara_ambiente()
+    if conf.CONGELATO:   #Comm. Claude:  nell'exe Python e librerie sono già dentro: niente .venv né pip
+        copia_dati_iniziali()
+    else:
+        controlla_python()
+        prepara_ambiente()
     porta, gia_aperto = scegli_porta()
     indirizzo = f"http://127.0.0.1:{porta}"
     if gia_aperto:
@@ -183,6 +206,11 @@ def main() -> None:
     print(f"  FITP Manager si apre nel browser: {indirizzo}")
     print("  Per CHIUDERE il programma chiudi la pagina nel browser.")  #Comm. Claude:  il watchdog di core/app.py spegne il processo
     print("-" * 70 + "\n")
+    if conf.CONGELATO:
+        #Comm. Claude:  nell'exe non c'è un python.exe da lanciare: il server gira in questo stesso processo
+        from core import app as programma
+        programma.avvia_server(porta)   # ritorna solo se il server si ferma; di norma il watchdog chiude prima il processo
+        return
     ambiente = dict(os.environ, FITP_PORTA=str(porta), PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
     try:
         codice = subprocess.call([str(PYTHON_VENV), str(CARTELLA / "core" / "app.py")], env=ambiente,
@@ -203,4 +231,6 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         finestra(f"Errore imprevisto all'avvio di TASK:\n{type(e).__name__}: {e}\n\n{DOVE_DETTAGLI}", errore=True)
+        if conf.CONGELATO:   #Comm. Claude:  nell'exe un raise farebbe comparire un secondo riquadro (quello di PyInstaller)
+            sys.exit(1)
         raise

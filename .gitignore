@@ -1,5 +1,9 @@
 # Ambiente Python e cache
 .venv/
+# Comm. Claude: build dell'exe (strumenti/crea_installer_windows.bat)
+.venv-build/
+build/
+dist/
 __pycache__/
 *.pyc
 

@@ -1,18 +1,38 @@
+import os    #Comm. Claude:  os e sys (libreria standard) servono per i percorsi dell'exe; avvia.py può ancora importare conf
+import sys
 from pathlib import Path
 
 ## contenitore di costanti e percorsi di configurazione
 CD_DIR = Path.home()
 # percorsi assoluti dalla cartella del progetto: funzionano da qualsiasi cartella si lanci python
 BASE_DIR = Path(__file__).resolve().parent.parent
-DB_DIR = BASE_DIR / 'data'
-OUTPUT_DIR = BASE_DIR / 'output'
+
+#Comm. Claude:  nell'exe (PyInstaller) i file del programma stanno nella cartella d'installazione, che l'utente
+#Comm. Claude:  non deve toccare, e i dati che l'app MODIFICA (circoli aggiunti, coefficienti, output, upload) non
+#Comm. Claude:  possono stare lì. Quindi due radici: RISORSE_DIR (sola lettura, dentro l'exe) e DATI_DIR (scrivibile,
+#Comm. Claude:  una per utente). Da sorgente (python core/app.py) coincidono con la cartella del progetto: nulla cambia.
+CONGELATO = getattr(sys, "frozen", False)             # True dentro l'exe
+if CONGELATO:
+    RISORSE_DIR = Path(sys._MEIPASS)                  # <installazione>/_internal
+    if sys.platform == "win32":
+        DATI_DIR = Path(os.environ["LOCALAPPDATA"]) / "TASK"         # C:/Users/<utente>/AppData/Local/TASK
+    elif sys.platform == "darwin":
+        DATI_DIR = Path.home() / "Library" / "Application Support" / "TASK"
+    else:
+        DATI_DIR = Path.home() / ".local" / "share" / "TASK"
+else:
+    RISORSE_DIR = DATI_DIR = BASE_DIR
+DATI_INIZIALI_DIR = RISORSE_DIR / "data"              # nell'exe: copie di partenza, copiate in DB_DIR al primo avvio
+
+DB_DIR = DATI_DIR / 'data'
+OUTPUT_DIR = DATI_DIR / 'output'
 # temp/ contiene i vecchi HTML, non usati
-HTML_DIR = BASE_DIR / 'templates'
-STATIC_DIR = BASE_DIR / 'static'
-UPLOAD_DIR = BASE_DIR / 'upload'
+HTML_DIR = RISORSE_DIR / 'templates'
+STATIC_DIR = RISORSE_DIR / 'static'
+UPLOAD_DIR = DATI_DIR / 'upload'
 
 # codici d'errore con causa e "cosa fare" (si apre con Excel, separatore ;)
-CODICI_ERRORI = BASE_DIR / "codici_errori.csv"
+CODICI_ERRORI = RISORSE_DIR / "codici_errori.csv"
 
 # non 5000: sui Mac recenti è occupata da AirPlay Receiver
 PORTA_GUI = 5050

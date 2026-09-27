@@ -1,5 +1,7 @@
 # Comm. Claude: fine riga fisse per i lanciatori: CRLF per lo script Windows, LF per quello Mac
 *.vbs text eol=crlf
+*.bat text eol=crlf
+*.iss text eol=crlf
 strumenti/*.sh text eol=lf
 # l'app è firmata: git non deve toccare NESSUN suo file, altrimenti la firma non vale più
 Start[[:space:]]TASK.app/** -text
