@@ -1,25 +1,13 @@
 import re
+import unicodedata
 import pdfplumber
 from pathlib import Path
-import pandas as pd
 
 from core import conf, normalize, excel_style
 from dataclasses import dataclass
 from processor import players as ply
 from processor import file_utente as _fu
 
-''' 
-Da gestire: 
-1) dataclass per player
-2) creatore del file csv per estrazione dati dal pdf 
-3) matcher per confronto tra pdf e infile excel con dati di sgat
-4) aggiustare i percorsi dei file
-
-2) ogni file pdf del CS ha intestazioni diverse, tra la seire A e 
-serie B cambia parecchio e pure tra girone e play-off/out, la funzione deve 
-essere intelligente per capire cosa stiamo trattando,
-
-'''
 
 # --- tipi di campionato ----
 TIPO_A = "serie A"
@@ -111,6 +99,17 @@ def _testo(valore) -> str:
 def _log(*_args, **_kwargs):
     pass
 
+def _chiave_intest(s) -> str:
+    t = re.sub(r"\s+", " ", _testo(s).lower()).strip()
+    t = re.sub(r"\s+>", ">", t)
+    return re.sub(r"^rank ", "", t)
+
+def _chiave_nome(s) -> str:
+    t = unicodedata.normalize("NFKD", _testo(s))
+    t = "".join(ch for ch in t if not unicodedata.combining(ch))
+    t = re.sub(r"[\'\u2019`\u00b4]", "", t)
+    return re.sub(r"\s+", " ", t).strip().upper()
+
 #capiamo che tipo di file abbiamo davanti
 def tipo_campionato(in_file) -> str:
     """Tipo di campionato dal nome del file: 'serie A', 'serie A p-off', 'serie B'.
@@ -145,7 +144,10 @@ def dati_squadra(righe: list[list[str]], i: int, ospite: bool = False) -> list[s
     for offset in (1,2):
         if i - offset < 0 :
             break
-        piene = [c.strip() for c in righe[i - offset] if c and c.strip()]
+        #Comm. Claude: nei PDF A1 la riga squadra ha una cella in piu' ("Ordine di schieramento"):
+        #7 celle piene invece di 6, quindi il vecchio controllo non scattava mai. La escludo.
+        piene = [c.strip() for c in righe[i - offset]
+                 if c and c.strip() and c.strip().lower() != "ordine di schieramento"]
         if len(piene) == 6:
             return [piene[j] for j in (OSPITE if ospite else CASA)]
     return []
@@ -155,13 +157,14 @@ def mappa_colonne_lista(colonne: list[str]) -> dict[str, int]:
     mappa: dict[str, int] = {}
     
     for j, intest in enumerate(colonne):
-        text = _testo(intest).lower()
+        text = _chiave_intest(intest)
         if not text: 
             continue
         for campo, alias in conf.CAMPI.items():
             if campo in mappa: 
                 continue
-            if text in alias or any(text.startswith(a) for a in alias):
+            alias_k = tuple(_chiave_intest(a) for a in alias)
+            if text in alias_k or any(text.startswith(a) for a in alias_k):
                 mappa[campo] = j
                 break
     # nei PDF FITP la prima colonna (ordine di schieramento) non ha intestazione
@@ -211,12 +214,13 @@ def leggi_lista(pdf, log=None) -> list[Lista]:
                 mappa = new # ?? 
             
             team = dati_squadra(righe, i)
-            if team:
-                squadra = team[0]
-                if len(team) >= 4:
-                    palle, campi, riserva = team[1], team[2], team[3]
-                else:
-                    palle = campi = riserva = ""
+            #Comm. Claude: prima, se la riga squadra non si trovava, restava la squadra
+            #PRECEDENTE senza errori. Ora si ferma subito.
+            if not team:
+                raise ValueError(f"{info_file.nome_file}: riga squadra non trovata sopra "
+                                 f"l'intestazione giocatori (riga {i}): {righe[max(i-2,0):i]}")
+            squadra = team[0]
+            palle, campi, riserva = team[1], team[2], team[3]
             
         
         idx_cognome = mappa.get("cognome") 
@@ -346,6 +350,28 @@ def corrispondenza(player, lista) -> bool:
         flag = f"NO ({', '.join(diversi)})"
         return corr, flag
     
+#Comm. Claude: match giocatore SGAT -> lista con chiave normalizzata; se il nome nel PDF e'
+#troncato (es. "GILLES-ARNAUD JEAN J") o piu' corto/lungo di SGAT, ripiego sul prefisso, ma
+#solo se il candidato e' UNICO con lo stesso cognome. Cognome/nome divisi diversamente
+#(cognomi doppi) si recuperano confrontando la stringa completa.
+def trova_in_lista(p, lista: list[Lista]):
+    c, n = _chiave_nome(p.cognome), _chiave_nome(p.nome)
+    for g in lista:
+        if (_chiave_nome(g.cognome), _chiave_nome(g.nome)) == (c, n):
+            return g
+    #Comm. Claude: stringa completa senza spazi, uguale o prefisso (testo sbordato tra le
+    #colonne: "LOKOLI LA"+"URENT ..." vs "LOKOLI"+"LAURENT ...", oppure cognomi doppi)
+    tot = (c + n).replace(" ", "")
+    cand = [g for g in lista if len(tot) >= 6 and
+            (lambda t: t.startswith(tot) or tot.startswith(t))(
+                (_chiave_nome(g.cognome) + _chiave_nome(g.nome)).replace(" ", ""))]
+    if len(cand) == 1:
+        return cand[0]
+    cand = [g for g in lista
+            if _chiave_nome(g.cognome) == c and n and _chiave_nome(g.nome)
+            and (_chiave_nome(g.nome).startswith(n) or n.startswith(_chiave_nome(g.nome)))]
+    return cand[0] if len(cand) == 1 else None
+
 def foglio_cs(ws, lista: list[Lista], sgat_file: str, squadra_casa: str, data: str, driver=None, log=None,
               avanzamento=None):
 
@@ -356,9 +382,6 @@ def foglio_cs(ws, lista: list[Lista], sgat_file: str, squadra_casa: str, data: s
     df_sgat = _fu.leggi_sgat(sgat_file, log, ruoli=(nome_foglio,))[nome_foglio]
     giocatori = ply.campionato(df_sgat, data, squadra, driver, log, avanzamento)
 
-    # indice (COGNOME, NOME) -> giocatore della lista
-    per_nome = {(g.cognome.strip().upper(), g.nome.strip().upper()): g for g in lista}
-
     # intestazione: colonne extra solo se serie A e/o playoff
     # testa.tipo ("serie A"), non testa.serie ("A2", "B1"…)
     serie_A = testa.tipo in (TIPO_A, TIPO_A_POFF)
@@ -368,8 +391,11 @@ def foglio_cs(ws, lista: list[Lista], sgat_file: str, squadra_casa: str, data: s
     excel_style.formatta_file(ws, colore_header=conf.COLORE_HEADER)
     link_col = col.index("Link tessera") + 1
     
+    trovati: set[int] = set()   #Comm. Claude: id dei giocatori di lista abbinati a SGAT
     for n, p in enumerate(giocatori, start=1):
-        g = per_nome.get((p.cognome.strip().upper(), p.nome.strip().upper()))
+        g = trova_in_lista(p, lista)   #Comm. Claude: era per_nome.get((COGNOME, NOME)) esatto
+        if g is not None:
+            trovati.add(id(g))
         corr, flag = corrispondenza(p, g)
         g = g or Lista()   # giocatore non in lista: campi vuoti
 
@@ -390,8 +416,7 @@ def foglio_cs(ws, lista: list[Lista], sgat_file: str, squadra_casa: str, data: s
 
     excel_style.evidenzia_corrispondenza(ws, nome_colonna=col[0])
 
-    in_sgat = {(p.cognome.strip().upper(), p.nome.strip().upper()) for p in giocatori}
-    mancanti = [f"{c} {n}" for (c, n) in per_nome if (c, n) not in in_sgat]
+    mancanti = [f"{g.cognome} {g.nome}" for g in lista if id(g) not in trovati]
     if mancanti:
         (log or _log)(f"Att. 22: {squadra}: in lista PDF ma non nel file SGAT: {', '.join(mancanti)}")
 

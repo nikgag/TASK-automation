@@ -73,7 +73,7 @@ REGIONI_ITALIANE = [
 
 DIR_PDF_CS = UPLOAD_DIR / "campionati"
 
-INTESTAZIONI= {"Squadra", "Tipo Palle", "Indirizzo Campi", "Città Campi", "Superficie", "Campo Riserva", "Superficie campo principale", "Superficie Campo Riserva"}
+INTESTAZIONI= {"Squadra", "Tipo Palle", "Indirizzo Campi", "Città Campi", "Superficie", "Campo Riserva", "Superficie campo principale", "Superficie Campo Riserva", " "}
 
 
 # --- profili di colonne -------------------------------------------------------
@@ -89,8 +89,9 @@ CAMPI: dict[str, tuple[str, ...]] = {
     "nat": ("nazionalità", "nazionalita"),
     "schieramento": ("schieramento playoff - playout", "schieramento play off - play out",
                      "schieramento playoff-playout", "schieramento"),
-    "rank_intl": ("atp 1-500", "wta 1-500"),
-    "rank_intl_oltre": ("atp 501>", "wta 501>", "atp 501 >", "wta 501 >"),
+    "rank_intl": ("atp 1-500", "wta 1-500", "rank atp 1-500", "rank wta 1-500"),
+    "rank_intl_oltre": ("atp 501>", "wta 501>", "atp 501 >", "wta 501 >",
+                    "rank atp 501>", "rank wta 501>", "rank atp 501 >", "rank wta 501 >"),
     "numero": ("n.", "numero"),
     "tessera": ("num. tessera", "tessera", "n. tessera"),
     "nata": ("data di nascita", "data nascita", "nato/a il"),
