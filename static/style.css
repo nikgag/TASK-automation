@@ -443,6 +443,7 @@ select option:disabled { color: var(--ink-faint); }
 .log li:last-child { border-bottom: 0; }
 .log li.err { border-left-color: var(--err); background: var(--err-soft); }
 .log li.att { border-left-color: var(--att); background: var(--att-soft); }
+.log li.struttura { border-left-color: var(--accent); background: var(--surface); color: var(--accent); font-weight: 700; }
 .log.solo-problemi li.info { display: none; }
 
 pre.traccia {

@@ -41,7 +41,13 @@ from processor import file_utente as _fu
 from processor import main as _main
 
 app = Flask(__name__, template_folder=str(conf.HTML_DIR), static_folder=str(conf.STATIC_DIR))
-app.secret_key = secrets.token_hex(16)                  # per session e flash; nuovo a ogni avvio
+_KEY_FILE = conf.DATI_DIR / ".secret_key"
+if _KEY_FILE.exists():
+    app.secret_key = _KEY_FILE.read_bytes()
+else:
+    key = secrets.token_bytes(32)
+    _KEY_FILE.write_bytes(key)
+    app.secret_key = key
 app.jinja_env.globals["livello_log"] = lavori.livello   # colori del registro, regola unica
 
 
@@ -384,40 +390,83 @@ def aggiungi_circoli():
     return redirect(request.referrer or url_for("index"))
 
 
-# Campionato fase 1: salva e controlla PDF e file SGAT, legge le squadre dal PDF.
-# coll: file_utente.leggi_sgat | main.analizza_pdf_campionato -> campionato.leggi_lista (pdfplumber) | html: campionato.html fase 1 -> fase 2
+# Campionato fase 1: salva e controlla PDF e file SGAT, legge le squadre dal PDF e salva il CSV.
+# coll: file_utente.leggi_sgat | campionato.leggi_lista (pdfplumber) -> campionato.lista_csv | html: campionato.html fase 1 -> fase 2
 @app.route("/campionato", methods=["GET", "POST"])
 def campionato():
     occupato = _occupato()
     if occupato:
         return occupato
-    if request.method == "GET":
-        return render_template("campionato.html")
 
+    # ── 1. Cerca il CSV più recente in memoria (data/campionati/) ──
+    campionati_dir = conf.DB_DIR / "campionati"
+    csv_memoria = None
+    lista_memoria = None
+    if campionati_dir.exists():
+        csv_files = sorted(campionati_dir.glob("*.csv"))
+        if csv_files:
+            csv_memoria = csv_files[-1]
+            try:
+                lista_memoria = _cs.leggi_lista(csv_memoria)
+            except Exception:
+                lista_memoria = None
+
+    if request.method == "GET":
+        # GET: Mostra Fase 1, se c'è memoria passiamo lista_memoria al template
+        return render_template("campionato.html", lista_memoria=lista_memoria)
+
+    # ── 2. POST (Fase 1 completata, si caricano i file) ──
     cartella = _nuova_cartella()
-    pdf = _salva(request.files["pdf_lista"], cartella, (".pdf",))
     sgat = _salva(request.files["file_sgat"], cartella, (".xlsx", ".xls"))
+    pdf_file = request.files.get("pdf_lista")
+    
+    usando_memoria = False
+    if pdf_file and pdf_file.filename:
+        # Hanno caricato un nuovo PDF
+        pdf = _salva(pdf_file, cartella, (".pdf",))
+    else:
+        # Nessun PDF caricato: controlliamo se possiamo usare la memoria
+        if not csv_memoria or not lista_memoria:
+            raise ErroreUtente("Err 28: Nessun PDF caricato e nessuna lista trovata in memoria.")
+        usando_memoria = True
+        pdf = None
 
     avvisi: list[str] = []
     sgat_letto = _fu.leggi_sgat(sgat, log=avvisi.append)            # ErroreUtente -> messaggio e si torna qui
-    try:
-        with pdfplumber.open(pdf) as documento:
-            len(documento.pages)                                   # solo "si apre?": gli errori veri devono emergere
-    except Exception as e:
-        raise ErroreUtente(f"Err 28: il PDF «{pdf.name}» non si apre ({type(e).__name__}): è danneggiato o non è un PDF.") from e
-    info = _main.analizza_pdf_campionato(str(pdf))
-    for avviso in avvisi:
-        flash({"testo": avviso, "rimedio": cosa_fare(avviso)}, "warning")
-    # Solo i percorsi in sessione: la lista dei giocatori è troppo grande per il cookie.
-    session["cs"] = {"pdf": str(pdf), "sgat": str(sgat)}
+    
+    if not usando_memoria:
+        # Controlla e processa il nuovo PDF
+        try:
+            with pdfplumber.open(pdf) as documento:
+                len(documento.pages)                                   # solo "si apre?"
+        except Exception as e:
+            raise ErroreUtente(f"Err 28: il PDF «{pdf.name}» non si apre ({type(e).__name__}): è danneggiato o non è un PDF.") from e
+
+        for avviso in avvisi:
+            flash({"testo": avviso, "rimedio": cosa_fare(avviso)}, "warning")
+            
+        lista = _cs.leggi_lista(str(pdf)) 
+        csv_path = _cs.lista_csv(lista, datetime.now().strftime("%Y%m%d_%H%M"))
+    else:
+        # Usa la lista in memoria
+        for avviso in avvisi:
+            flash({"testo": avviso, "rimedio": cosa_fare(avviso)}, "warning")
+        lista = lista_memoria
+        csv_path = csv_memoria
+
+    # Salva in sessione e assicura persistenza tra riavvii del browser
+    session.permanent = True
+    session["cs"] = {"csv": str(csv_path), "sgat": str(sgat)}
+    
     return render_template(
         "campionato.html",
         sgat_righe={ruolo: len(df) for ruolo, df in sgat_letto.items()},
-        squadre=info.get("squadre", []),                   # [] se il PDF non ha giocatori: la pagina lo dice
-        campionato=info.get("campionato"),
-        n_giocatori=info.get("numero_giocatori_totali", 0),
-        nome_pdf=pdf.name,
+        squadre=sorted({g.squadra for g in lista if g.squadra}),
+        campionato=lista[0].etichetta if lista else None,
+        n_giocatori=len(lista),
+        nome_pdf=csv_path.name if usando_memoria else pdf.name,
         nome_sgat=sgat.name,
+        da_memoria=usando_memoria,
     )
 
 
@@ -430,7 +479,7 @@ def modello_sgat():
 
 
 # Campionato fase 2: verifica casa, ospite e data, poi avvia il controllo tessere.
-# coll: campionato.leggi_lista | lavori -> main.torneo -> campionato.foglio_cs (file_utente.leggi_sgat) -> players.campionato -> fitp_driver
+# coll: campionato.leggi_lista (CSV) | lavori -> main.torneo -> campionato.foglio_cs (file_utente.leggi_sgat) -> players.campionato -> fitp_driver
 # html: campionato.html fase 2 -> elaborazione.html -> download.html
 @app.route("/campionato/genera", methods=["POST"])
 def campionato_genera():
@@ -438,12 +487,13 @@ def campionato_genera():
     if occupato:
         return occupato
     cs = session.get("cs")
-    if not cs or not Path(cs["pdf"]).is_file() or not Path(cs["sgat"]).is_file():
+    if not cs or not Path(cs["csv"]).is_file() or not Path(cs["sgat"]).is_file():
         flash("I file caricati non sono più disponibili (il programma è stato riavviato?): caricali di nuovo.", "warning")
         return redirect(url_for("campionato"))
 
-    # Rileggo il PDF (pochi secondi) e controllo le scelte contro le squadre VERE della lista.
-    lista = _cs.leggi_lista(cs["pdf"])
+    # Leggo la lista dal CSV (già costruito in fase 1, senza riaprire il PDF)
+    csv_path = Path(cs['csv'])
+    lista = _cs.leggi_lista(csv_path)
     squadre = tuple(sorted({g.squadra for g in lista if g.squadra}))
     casa = _scelta("squadra_casa", squadre)                   # squadra_casa
     ospite = _scelta("squadra_ospite", squadre)               # squadra_ospite
@@ -462,6 +512,7 @@ def campionato_genera():
         data_inizio=_gg_mm_aaaa(data),
     )
     return _avvia("campionato", opz, f"Campionato · {casa} – {ospite}")
+
 
 
 # =============================================================================

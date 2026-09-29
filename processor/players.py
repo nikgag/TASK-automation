@@ -260,6 +260,13 @@ def campionato(df: pd.DataFrame, data: str | None = None, team: str | None = Non
         if driver is not None: 
             dati_tess = driver.tessera_cs(link, data, n_tessera_SGAT)
             
+            # Se la pagina non è caricata, tessera_cs ritorna ("N/D", None, None, None, None).
+            # In ogni caso convertiamo None -> "N/D" per uniformità.
+            # "N/D" = campo non trovato/pagina non caricata; None = driver non usato.
+            if dati_tess[0] == "N/D" and all(v is None for v in dati_tess[1:]):
+                log(f"ATTENZIONE {str(row.get('cognome', '')).strip()}: pagina tessera non caricata "
+                    f"(timeout o errore rete) — tutti i campi tessera saranno N/D.")
+            
             tessera_record = [val if val is not None else "N/D" for val in dati_tess]
 
             log(f"{str(row.get('cognome', '')).strip()} {str(row.get('nome', '')).strip()}: "

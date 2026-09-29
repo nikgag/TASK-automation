@@ -67,11 +67,13 @@ _blocco = threading.Lock()
 
 
 def livello(messaggio) -> str:
-    """Colore di una riga di log: 'err' | 'att' | 'info'.
+    """Colore di una riga di log: 'err' | 'att' | 'info' | 'struttura'.
 
     Un'unica regola per la pagina in diretta e per la pagina di download (app.py la rende
     disponibile ai template come `livello_log`)."""
     t = str(messaggio)
+    if t.startswith("Info Struttura"):
+        return "struttura"
     if t.startswith("Err"):
         return "err"
     if t.startswith("Att") or any(p in t for p in ("Scaduto", "In scadenza", "verifica manuale", "Certificato=N/D")):

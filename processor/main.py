@@ -112,14 +112,15 @@ def torneo(opz: TypeTorneo, driver=None, log=None, avanzamento=None) -> dict:
         if not lista_ospite:
             raise ValueError(f"Err 07: squadra ospite '{opz.squadra_ospite}' non trovata nel PDF.")
 
+        struttura_msg = ""
         if lista_casa:
             _cs.foglio_cs(ws_casa, lista_casa, opz.file_iscritti, opz.squadra_casa, opz.data_inizio, driver, log,
                           _fase(avanzamento, f"Casa - {opz.squadra_casa}"))
             esito['casa_cs'] = f"Trovati {len(lista_casa)} giocatori"
             
-
-            dati_campi_casa = f"Palle: {lista_casa[0].palle}, Campi: {lista_casa[0].campi}"
-            log(f"Info Struttura: {dati_campi_casa}")
+            struttura_msg = f"Info Struttura: Palle: {lista_casa[0].palle}, Campi: {lista_casa[0].campi}"
+            if lista_casa[0].tipo in (_cs.TIPO_A, _cs.TIPO_A_POFF) and lista_casa[0].riserva:
+                struttura_msg += f", Riserva: {lista_casa[0].riserva}"
         
         # Generazione foglio Ospite
         if lista_ospite:
@@ -130,6 +131,11 @@ def torneo(opz: TypeTorneo, driver=None, log=None, avanzamento=None) -> dict:
 
         wb.save(opz.file_output)
         esito["fogli"] = wb.sheetnames
+        
+        # Stampo l'info struttura alla fine in modo che sia l'ultima o penultima riga
+        if struttura_msg:
+            log(struttura_msg)
+            
         log(f"Salvato: {opz.file_output}")
 
     else:

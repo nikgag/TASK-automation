@@ -42,6 +42,15 @@
 
 {% if fase == 1 %}
 {# ═════════════════════ FASE 1: caricamento file ═════════════════════ #}
+
+{% if lista_memoria %}
+<div class="avviso avviso-info">
+  {{ icona('info') }}
+  <p><strong>Lista in memoria:</strong> <em>{{ lista_memoria[0].etichetta if lista_memoria else 'Campionato' }}</em> ({{ lista_memoria|length }} giocatori).<br>
+     Puoi caricare solo il file SGAT per usare questa lista, oppure caricare un nuovo PDF per sostituirla.</p>
+</div>
+{% endif %}
+
 <form class="form-guidato" method="post" enctype="multipart/form-data"
       data-attesa="Sto leggendo la lista PDF e cercando le squadre…">
 
@@ -50,12 +59,12 @@
     <div class="campo" data-etichetta="lista PDF">
       <label class="dropzone">
         {#- data-controllo-nome: se il nome del file non contiene "Serie A/B" compare l'avviso sotto -#}
-        <input type="file" name="pdf_lista" accept=".pdf" required data-controllo-nome="SERIE[ _-]*[AB]">
+        <input type="file" name="pdf_lista" accept=".pdf" {{ 'required' if not lista_memoria else '' }} data-controllo-nome="SERIE[ _-]*[AB]">
         <span class="dropzone-icona">
           <span class="ic-su">{{ icona('su') }}</span><span class="ic-ok">{{ icona('ok') }}</span>
         </span>
         <span class="dropzone-testo"><strong>Trascina qui il PDF</strong> oppure clicca per sceglierlo</span>
-        <span class="dropzone-nome">Lista scaricata dal sito FITP (.pdf)</span>
+        <span class="dropzone-nome">Lista scaricata dal sito FITP (.pdf){{ ' — OPZIONALE' if lista_memoria else '' }}</span>
       </label>
       <div class="avviso avviso-att dropzone-avviso" hidden>
         {{ icona('attenzione') }}
@@ -91,7 +100,9 @@
 
 {% else %}
 {# ═════════════════════ FASE 2: scelta dell'incontro ═════════════════════ #}
+
 <section class="card">
+
   <div class="riepilogo">
     <div>
       <p class="dato-etichetta">Campionato</p>

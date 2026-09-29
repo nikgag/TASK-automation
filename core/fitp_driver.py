@@ -33,8 +33,7 @@ _LOWER = "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'"
 # Classifica FITP: categoria 1-4, punto, gruppo a una cifra oppure "NC".
 # I lookaround impediscono di pescare pezzi di numeri piu' lunghi
 # (es. "3.5" dentro "jquery-3.5.1" o "12.3").
-_RE_CLASSIFICA = re.compile(r"(?<![\w.])([1-4]\.(?:NC|[1-9]))(?![\w.])", re.IGNORECASE)
-
+_RE_CLASSIFICA = re.compile(r"([1-4]\.(?:\d{1,2}|NC))\b", re.IGNORECASE)
 # Quanti caratteri di HTML guardare dopo ogni occorrenza di "classifica"
 # nel fallback su page_source.
 _FINESTRA_CLASSIFICA = 400
@@ -80,6 +79,10 @@ class TesseraDriver:
         for tentativo in range(tentativi):
             try:
                 self.driver.get(url)
+                if self.driver.current_url != url:
+                    log.warning("Redirect inatteso: richiesta '%s', caricata '%s'. "
+                                "Sessione probabilmente scaduta.", url, self.driver.current_url)
+                    return False
                 return True
             except TimeoutException:
                 if tentativo == tentativi - 1:

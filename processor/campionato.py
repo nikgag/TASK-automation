@@ -2,9 +2,10 @@ import re
 import unicodedata
 import pdfplumber
 from pathlib import Path
+import csv
 
 from core import conf, normalize, excel_style
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from processor import players as ply
 from processor import file_utente as _fu
 
@@ -187,7 +188,19 @@ def get_ranking(row: list[str], idx: int | None) -> tuple[str, bool]:
     return "", False
 
 def leggi_lista(pdf, log=None) -> list[Lista]: 
+    # se è un CSV, ricostruisco la lista direttamente senza aprire pdfplumber 
+    p = Path(str(getattr(pdf, "filename", None) or pdf))
+    if p.suffix.lower() == ".csv":
+        with open(p, encoding='utf-8', newline="") as f:
+            reader = csv.DictReader(f)
+            return [Lista(**{
+                k: (row[k] == 'True' if k in ('poff', 'dubbia') else row[k])
+                for k in Lista.__dataclass_fields__ if k in row
+            }) for row in reader]
+    # return esco dalla funzione
+
     info_file = leggi_info(pdf) #tutte info solo dal nome del file
+
     
     righe: list[list[str]] = []
     out: list[Lista] = []
@@ -201,6 +214,7 @@ def leggi_lista(pdf, log=None) -> list[Lista]:
                 for row in tabella: 
                     righe.append([_testo(c).replace("\n", " ") for c in row])
     
+
     for i, row in enumerate(righe): 
         if not any(row): 
             continue
@@ -339,9 +353,10 @@ def corrispondenza(player, lista) -> bool:
     }
     
     # rank_tess si confronta solo se la tessera ha dato un valore
+    # se il campo nella lista (a) è vuoto (non presente nel PDF), si salta il confronto
     diversi = [c for c, (a,b) in rank.items()
-               if (c == 'rank_sgat' or pulisci(b)) and pulisci(a) != pulisci(b)]
-    diversi += [c for c, (a,b) in v_v_n.items() if pulisci(b) and pulisci(a) != pulisci(b)]
+               if pulisci(a) and (c == 'rank_sgat' or pulisci(b)) and pulisci(a) != pulisci(b)]
+    diversi += [c for c, (a,b) in v_v_n.items() if pulisci(a) and pulisci(b) and pulisci(a) != pulisci(b)]
     
     if not diversi: 
         corr = True; flag='SI'
@@ -422,3 +437,29 @@ def foglio_cs(ws, lista: list[Lista], sgat_file: str, squadra_casa: str, data: s
 
     nome_foglio_new = f"{nome_foglio} - {squadra}"
     ws.title = re.sub(r'[\\/*?:\[\]]', '', nome_foglio_new)[:31]
+    
+def lista_csv(lista: list[Lista], data_upload: str) -> Path:
+    """Salva la lista PDF in un CSV persistente in data/campionati/.
+
+    Ritorna il Path del file creato.
+    """
+    if not lista:
+        raise ValueError("lista vuota: nessun giocatore da salvare")
+
+    testa = lista[0]
+    sex = 'M' if 'maschile' in testa.nome_file.lower() else 'F'
+    nome_csv = f"Lista_{testa.serie}_{sex}_{data_upload}.csv"
+
+    # salva in data/campionati/ (persistente tra i riavvii)
+    cartella = conf.DB_DIR / "campionati"
+    cartella.mkdir(parents=True, exist_ok=True)
+    percorso = cartella / nome_csv
+
+    intestazioni = list(Lista.__dataclass_fields__.keys())
+    with open(percorso, mode='w', encoding='utf-8', newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=intestazioni, extrasaction='ignore')
+        writer.writeheader()
+        for g in lista:
+            writer.writerow(asdict(g))
+
+    return percorso
