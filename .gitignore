@@ -18,6 +18,7 @@ avvio.log*
 data/circolo_regioni.csv
 data/archivio/
 
+
 # Backup locali
 _backup_*/
 
@@ -28,5 +29,5 @@ _backup_*/
 
 #avviabili 
 Start TASK.app/
-strumenti/
+
 
