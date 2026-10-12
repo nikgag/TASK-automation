@@ -177,7 +177,24 @@ class TesseraDriver:
 
         log.warning("Tessera %s: classifica non trovata", num_tessera or "?")
         return None
-
+ 
+    def _leggi_vivaio(self):
+            try:
+                span = self._wait_for_element(_xpath_label("vivaio"))
+                return self._valore_accanto(span)
+            except Exception:
+                log.warning("Nessun campo 'VIVAIO' trovato")
+                return None
+    
+    def _leggi_variato(self):
+        try:
+            span = self._wait_for_element(_xpath_label("trasferito"))
+            value = self._valore_accanto(span)
+        except Exception:
+            log.warning("Nessun campo 'TRASFERITO' trovato")
+            value = None
+        return value if value in ("T", "N", "S") else None
+        
     # --- metodi principali ----------------------------------------------------
     def tessera_cs(
         self, url, data_cs, num_tessera=None
@@ -216,23 +233,6 @@ class TesseraDriver:
         if not self._apri(url):
             return None
         return self._leggi_classifica()
-
-    def _leggi_vivaio(self):
-        try:
-            span = self._wait_for_element(_xpath_label("vivaio"))
-            return self._valore_accanto(span)
-        except Exception:
-            log.warning("Nessun campo 'VIVAIO' trovato")
-            return None
-
-    def _leggi_variato(self):
-        try:
-            span = self._wait_for_element(_xpath_label("trasferito"))
-            value = self._valore_accanto(span)
-        except Exception:
-            log.warning("Nessun campo 'TRASFERITO' trovato")
-            value = None
-        return value if value in ("T", "N", "S") else None
 
     def vivaio(self, url):
         if not self._apri(url):

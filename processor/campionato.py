@@ -3,6 +3,9 @@ import unicodedata
 import pdfplumber
 from pathlib import Path
 import csv
+from datetime import datetime
+from openpyxl.styles import PatternFill
+
 
 from core import conf, normalize, excel_style
 from dataclasses import dataclass, asdict
@@ -326,49 +329,73 @@ def verifica_campionato(mappa: dict[str, int], info: Lista, log=None) -> list[st
                 f"{', '.join(inattese)}. Il tipo dedotto dal nome file potrebbe essere sbagliato.")
     return mancanti           
 
-# controlliamo che i campi corrispondono alla Lista: SGAT == LISTA ?
-def corrispondenza(player, lista) -> bool: 
+# controlliamo che i campi corrispondono alla Lista: SGAT == LISTA 
+def corrispondenza(player, lista) -> tuple:
     #player è il dataclass che contiene sia tessera che sgat
     #lista solo info delle liste
-    corr = False 
-    
+    corr = False
+
     def pulisci(x):
         # senza accenti ("Sì" / "SI"); "N/D" (campo non trovato dal driver) = vuoto
         s = normalize.normalizza_nome(str(x).replace(',', '.')).upper()
         return "" if s in ("NAN", "NONE", "N/D") else s
-    
+
     if lista is None:
         flag = "Non in Lista"
         return corr, flag
-    
-    rank = {
-            'rank_sgat': (lista.rank_ita, player.rank),
-            'rank_tess': (lista.rank_ita, player.rank_tess),
-    }
-    
-    v_v_n = {
-        'nat': (lista.nat, player.nat),
-        'viv': (lista.vivaio, player.vivaio),
-        'var': (lista.variato, player.variato),
-    }
-    
-    # rank_tess si confronta solo se la tessera ha dato un valore
-    # se il campo nella lista (a) è vuoto (non presente nel PDF), si salta il confronto
-    diversi = [c for c, (a,b) in rank.items()
-               if pulisci(a) and (c == 'rank_sgat' or pulisci(b)) and pulisci(a) != pulisci(b)]
-    diversi += [c for c, (a,b) in v_v_n.items() if pulisci(a) and pulisci(b) and pulisci(a) != pulisci(b)]
-    
-    if not diversi: 
-        corr = True; flag='SI'
+
+    #Comm. Claude:  un blocco per campo, ognuno con la sua regola (prima tutti i campi avevano la stessa condizione)
+    diversi = []
+
+    #Comm. Claude:  rank_sgat: fonte meno importante, si confronta solo se la lista ha il valore
+    r_sgat = pulisci(player.rank)
+    r_lista = pulisci(lista.rank_ita)
+    if r_lista and r_lista != r_sgat:
+        diversi.append("rank_sgat")
+
+    #Comm. Claude:  rank_tess: deve coincidere con la lista; manca da una parte sola = NO
+    r_tess = pulisci(player.rank_tess)
+    if r_lista != r_tess:
+        diversi.append("rank_tess" if r_lista and r_tess
+                       else f"rank_tess: manca in {'lista' if not r_lista else 'tessera'}")
+
+    #Comm. Claude:  nat: campo sempre presente, deve coincidere tra lista e tessera
+    nat_l, nat_t = pulisci(lista.nat), pulisci(player.nat)
+    if nat_l != nat_t:
+        diversi.append("nat" if nat_l and nat_t
+                       else f"nat: manca in {'lista' if not nat_l else 'tessera'}")
+
+    #Comm. Claude:  viv: la tessera dà sempre Sì o No; la lista ha Sì se è vivaio e vuoto se non lo è (vuoto + No = OK)
+    viv_l, viv_t = pulisci(lista.vivaio), pulisci(player.vivaio)
+    if viv_t not in ("SI", "NO"):
+        diversi.append(f"viv: tessera non leggibile ({player.vivaio})")
+    elif viv_l not in ("", "SI"):
+        diversi.append(f"viv: valore strano in lista ({lista.vivaio})")
+    elif viv_t == "SI" and viv_l != "SI":
+        diversi.append("viv: in tessera ma non in lista")
+    elif viv_t == "NO" and viv_l == "SI":
+        diversi.append("viv: in lista ma non in tessera")
+
+    #Comm. Claude:  var: la tessera dà N, S, T oppure "-" (non variato); la lista è vuota se non variato. La lettera deve coincidere
+    def lettera(x):
+        s = pulisci(x)
+        return "" if s == "-" else s      # "-" e vuoto = non variato
+    var_l, var_t = lettera(lista.variato), lettera(player.variato)
+    if var_l != var_t:
+        if var_t and not var_l:
+            diversi.append(f"var: tessera {var_t}, lista vuota")
+        elif var_l and not var_t:
+            diversi.append(f"var: lista {var_l}, tessera senza")
+        else:
+            diversi.append(f"var: lista {var_l} ≠ tessera {var_t}")
+
+    if not diversi:
+        corr = True; flag = 'SI'
         return corr, flag
-    else: 
+    else:
         flag = f"NO ({', '.join(diversi)})"
         return corr, flag
-    
-#Comm. Claude: match giocatore SGAT -> lista con chiave normalizzata; se il nome nel PDF e'
-#troncato (es. "GILLES-ARNAUD JEAN J") o piu' corto/lungo di SGAT, ripiego sul prefisso, ma
-#solo se il candidato e' UNICO con lo stesso cognome. Cognome/nome divisi diversamente
-#(cognomi doppi) si recuperano confrontando la stringa completa.
+
 def trova_in_lista(p, lista: list[Lista]):
     c, n = _chiave_nome(p.cognome), _chiave_nome(p.nome)
     for g in lista:
@@ -386,58 +413,7 @@ def trova_in_lista(p, lista: list[Lista]):
             if _chiave_nome(g.cognome) == c and n and _chiave_nome(g.nome)
             and (_chiave_nome(g.nome).startswith(n) or n.startswith(_chiave_nome(g.nome)))]
     return cand[0] if len(cand) == 1 else None
-
-def foglio_cs(ws, lista: list[Lista], sgat_file: str, squadra_casa: str, data: str, driver=None, log=None,
-              avanzamento=None):
-
-    testa = lista[0]   # dati di squadra/lista, uguali per tutti i giocatori
-    squadra = testa.squadra
-    nome_foglio = 'casa' if squadra_casa == squadra else 'ospite'
-
-    df_sgat = _fu.leggi_sgat(sgat_file, log, ruoli=(nome_foglio,))[nome_foglio]
-    giocatori = ply.campionato(df_sgat, data, squadra, driver, log, avanzamento)
-
-    # intestazione: colonne extra solo se serie A e/o playoff
-    # testa.tipo ("serie A"), non testa.serie ("A2", "B1"…)
-    serie_A = testa.tipo in (TIPO_A, TIPO_A_POFF)
-    col = COL_BASE + (COL_A if serie_A else []) + (["Schierabile playoff"] if testa.poff else [])
-
-    ws.append(col)
-    excel_style.formatta_file(ws, colore_header=conf.COLORE_HEADER)
-    link_col = col.index("Link tessera") + 1
-    
-    trovati: set[int] = set()   #Comm. Claude: id dei giocatori di lista abbinati a SGAT
-    for n, p in enumerate(giocatori, start=1):
-        g = trova_in_lista(p, lista)   #Comm. Claude: era per_nome.get((COGNOME, NOME)) esatto
-        if g is not None:
-            trovati.add(id(g))
-        corr, flag = corrispondenza(p, g)
-        g = g or Lista()   # giocatore non in lista: campi vuoti
-
-        riga = [flag, n, p.cognome, p.nome, p.tessera,
-                g.rank_ita, p.rank, p.rank_tess,
-                g.variato, g.vivaio, g.nat, p.nat,
-                p.med, p.link]
-        if serie_A:
-            riga += [g.rank_int_1_500, g.rank_int_501, g.n_schieramento]
-        if testa.poff:
-            riga.append(g.schieramento_poff)
-
-        ws.append(riga)
-
-        cell = ws.cell(row=ws.max_row, column=link_col, value=f"Tessera {p.cognome}")
-        cell.hyperlink = p.link
-        cell.font = excel_style.FONT_LINK
-
-    excel_style.evidenzia_corrispondenza(ws, nome_colonna=col[0])
-
-    mancanti = [f"{g.cognome} {g.nome}" for g in lista if id(g) not in trovati]
-    if mancanti:
-        (log or _log)(f"Att. 22: {squadra}: in lista PDF ma non nel file SGAT: {', '.join(mancanti)}")
-
-    nome_foglio_new = f"{nome_foglio} - {squadra}"
-    ws.title = re.sub(r'[\\/*?:\[\]]', '', nome_foglio_new)[:31]
-    
+  
 def lista_csv(lista: list[Lista], data_upload: str) -> Path:
     """Salva la lista PDF in un CSV persistente in data/campionati/.
 
@@ -463,3 +439,179 @@ def lista_csv(lista: list[Lista], data_upload: str) -> Path:
             writer.writerow(asdict(g))
 
     return percorso
+
+# regole campionato
+def regole(lista: list[Lista]) -> list[int]:
+    testa = lista[0]; sex = 'M' if 'maschile' in testa.nome_file.lower() else 'F'
+    #regole CS
+    #variati, vivai, stranieri
+    if sex == 'M': 
+        return [2 , 2, 1]
+    else:
+        return [1 ,1,1]
+        
+#scriviamo i fogli:
+def foglio_cs(ws, lista: list[Lista], sgat_file: str, squadra_casa: str, data: str, driver=None, log=None,
+              avanzamento=None) -> list[ply.Player]:
+    """Compila il foglio squadra ('Casa' o 'Ospite') nel modello mod_cs.xlsx.
+    
+    Scrive sia le colonne visibili (A:M) sia le colonne sorgente (N:V) per le formule,
+    e restituisce la lista dei giocatori elaborati.
+    """
+    testa = lista[0]
+    squadra = testa.squadra
+    ruolo = 'casa' if squadra_casa == squadra else 'ospite'
+
+    # Intestazione testata foglio squadra
+    ws["A1"] = f"{'CASA' if ruolo == 'casa' else 'OSPITE'} · {squadra}"
+    ws["A2"] = f"Generato il {datetime.now().strftime('%d/%m/%Y %H:%M')} · fonti: lista campionato (PDF), SGAT, tessere FITP"
+
+    # Lettura SGAT e scraping tessere
+    df_sgat = _fu.leggi_sgat(sgat_file, log, ruoli=(ruolo,))[ruolo]
+    giocatori = ply.campionato(df_sgat, data, squadra, driver, log, avanzamento)
+
+    # Reset preventivo delle righe dati da 9 a 50 (colonne A..V)
+    for r in range(9, 51):
+        for c in range(1, 23):
+            cell = ws.cell(row=r, column=c)
+            cell.value = None
+            cell.hyperlink = None
+
+    trovati: set[int] = set()
+    riga_idx = 9
+
+    for n, p in enumerate(giocatori, start=1):
+        g = trova_in_lista(p, lista)
+        if g is not None:
+            trovati.add(id(g))
+        corr, flag = corrispondenza(p, g)
+        g = g or Lista()
+
+        # Determina l'esito per la colonna A (coerente con le formule di mod_cs.xlsx)
+        if corr:
+            esito_cella = "✔ OK"
+        elif p.rank_tess == "NON LETTO" or p.med is None:
+            esito_cella = "⚠ VERIFICA"
+        else:
+            esito_cella = "✖ NO"
+
+        # Colonne A:M (visibili)
+        ws.cell(row=riga_idx, column=1, value=esito_cella)
+        ws.cell(row=riga_idx, column=2, value=n)
+        ws.cell(row=riga_idx, column=3, value=f"{p.cognome} {p.nome}".strip())
+        ws.cell(row=riga_idx, column=4, value=p.tessera)
+        ws.cell(row=riga_idx, column=5, value=p.rank_tess or g.rank_ita or p.rank or "—")
+        ws.cell(row=riga_idx, column=6, value=p.variato if p.variato in ("T", "N", "S") else (g.variato if g.variato in ("T", "N", "S") else "—"))
+        ws.cell(row=riga_idx, column=7, value="Sì" if (p.vivaio == "SI" or g.vivaio == "SI") else "No")
+        ws.cell(row=riga_idx, column=8, value=p.nat or g.nat or "—")
+        ws.cell(row=riga_idx, column=9, value=p.med or "Valido")
+        ws.cell(row=riga_idx, column=10, value=g.rank_int_1_500 or g.rank_int_501 or "—")
+        ws.cell(row=riga_idx, column=11, value=g.n_schieramento or g.schieramento_poff or "—")
+        ws.cell(row=riga_idx, column=12, value=flag if not corr else None)
+
+        cell_link = ws.cell(row=riga_idx, column=13, value=f"Tessera {p.cognome}")
+        if p.link:
+            cell_link.hyperlink = p.link
+            cell_link.font = excel_style.FONT_LINK
+
+        # Colonne N:V (dettaglio fonti a scomparsa per formule)
+        ws.cell(row=riga_idx, column=14, value=g.rank_ita or "—")
+        ws.cell(row=riga_idx, column=15, value=p.rank or "—")
+        ws.cell(row=riga_idx, column=16, value=p.rank_tess or "—")
+        ws.cell(row=riga_idx, column=17, value=g.variato if g.variato in ("T", "N", "S") else "—")
+        ws.cell(row=riga_idx, column=18, value=p.variato if p.variato in ("T", "N", "S") else "—")
+        ws.cell(row=riga_idx, column=19, value="Sì" if g.vivaio == "SI" else "—")
+        ws.cell(row=riga_idx, column=20, value="Sì" if p.vivaio == "SI" else ("No" if p.vivaio == "NO" else "NON LETTO"))
+        ws.cell(row=riga_idx, column=21, value=g.nat or "—")
+        ws.cell(row=riga_idx, column=22, value=p.nat or "—")
+
+        riga_idx += 1
+
+    mancanti = [f"{g.cognome} {g.nome}" for g in lista if id(g) not in trovati]
+    if mancanti:
+        (log or _log)(f"Att. 22: {squadra}: in lista PDF ma non nel file SGAT: {', '.join(mancanti)}")
+
+    return giocatori
+
+def foglio_stampa(ws, lista_casa: list[Lista], giocatori_casa: list[ply.Player],
+                  lista_ospite: list[Lista], giocatori_ospite: list[ply.Player]) -> None:
+    """Compila il foglio 'foglio CS' (foglio stampa/mappa di giornata) applicando
+    i colori pastello per vivai, variati e stranieri.
+    """
+    fill_vivaio = PatternFill(start_color=conf.COLORE_PASTELLO_VIVAIO, end_color=conf.COLORE_PASTELLO_VIVAIO, fill_type="solid")
+    fill_variato = PatternFill(start_color=conf.COLORE_PASTELLO_VARIATO, end_color=conf.COLORE_PASTELLO_VARIATO, fill_type="solid")
+    fill_straniero = PatternFill(start_color=conf.COLORE_PASTELLO_STRANIERO, end_color=conf.COLORE_PASTELLO_STRANIERO, fill_type="solid")
+
+    def _scrivi_blocco(r_start: int, lista_pdf: list[Lista], giocatori: list[ply.Player]):
+        # Pulisce le righe prima di scrivere (da C a N)
+        for r in range(r_start, r_start + 15):
+            for c in range(3, 15):
+                cell = ws.cell(row=r, column=c)
+                cell.value = None
+                cell.fill = PatternFill(fill_type=None)
+
+        # Scrittura giocatori
+        r = r_start
+        for p in giocatori:
+            g = trova_in_lista(p, lista_pdf) or Lista()
+
+            # Rilevamento figure/status per colorazione
+            is_viv = (p.vivaio == "SI") or (g.vivaio == "SI")
+            is_var = (p.variato in ("T", "N", "S")) or (g.variato in ("T", "N", "S"))
+            nat = (p.nat or g.nat or "").strip().upper()
+            is_stran = nat not in ("", "ITALIA", "ITA", "ITALIANA", "—", "-")
+
+            colori = []
+            if is_viv:
+                colori.append(fill_vivaio)
+            if is_var:
+                colori.append(fill_variato)
+            if is_stran:
+                colori.append(fill_straniero)
+
+            # Scrittura valori nelle colonne C..N
+            ws.cell(row=r, column=3, value=g.n_schieramento or (r - r_start + 1))  # N. schieramento
+            c_cognome = ws.cell(row=r, column=4, value=p.cognome)                 # Cognome
+            c_nome = ws.cell(row=r, column=5, value=p.nome)                       # Nome
+            ws.cell(row=r, column=6, value=p.tessera)                             # Num. Tessera
+            ws.cell(row=r, column=7, value=p.rank_tess or g.rank_ita or p.rank)   # Classifica
+            ws.cell(row=r, column=8, value=p.variato or g.variato or "—")         # Variato
+            ws.cell(row=r, column=9, value="Sì" if is_viv else "—")               # Vivaio
+            ws.cell(row=r, column=10, value=p.nat or g.nat or "—")                # Nazionalità
+            ws.cell(row=r, column=11, value=g.rank_int_1_500 or "—")              # INT 1-500
+            ws.cell(row=r, column=12, value=g.rank_int_501 or "—")                # INT 501>
+            ws.cell(row=r, column=13, value="—")                                  # Data Nascita (non da login)
+            ws.cell(row=r, column=14, value=p.med or "Valido")                    # Visita Medica
+
+            # Applicazione colori pastello
+            if len(colori) >= 2:
+                c_cognome.fill = colori[0]
+                c_nome.fill = colori[1]
+            elif len(colori) == 1:
+                c_cognome.fill = colori[0]
+                c_nome.fill = colori[0]
+
+            r += 1
+
+    # 1. Intestazione squadra Casa e struttura
+    if lista_casa:
+        ws.cell(row=1, column=3, value=lista_casa[0].squadra)
+        ws.cell(row=3, column=4, value=lista_casa[0].palle)
+        ws.cell(row=3, column=5, value=lista_casa[0].campi)
+        ws.cell(row=3, column=6, value=lista_casa[0].riserva or "—")
+        _scrivi_blocco(5, lista_casa, giocatori_casa)
+
+    # 2. Intestazione squadra Ospite
+    if lista_ospite:
+        ws.cell(row=22, column=3, value=lista_ospite[0].squadra)
+        _scrivi_blocco(24, lista_ospite, giocatori_ospite)
+
+def compila_riepilogo(ws, casa: str, ospite: str, limiti: list[int]) -> None:
+    """Compila il foglio 'Riepilogo' inserendo i dettagli dell'incontro e i limiti RTS."""
+    ws["A2"] = f"{casa} - {ospite}"
+    ws["B2"] = datetime.now().strftime("elaborazione del %d/%m/%Y alle %H:%M")
+    ws["B5"] = f"Casa · {casa}"
+    ws["C5"] = f"Ospite · {ospite}"
+    # Limite variati per Casa e Ospite (riga 13)
+    ws["B13"] = limiti[0]
+    ws["C13"] = limiti[0]

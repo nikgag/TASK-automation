@@ -6,6 +6,7 @@ from pathlib import Path
 CD_DIR = Path.home()
 # percorsi assoluti dalla cartella del progetto: funzionano da qualsiasi cartella si lanci python
 BASE_DIR = Path(__file__).resolve().parent.parent
+VERSIONE = "1.0.0"
 
 CONGELATO = getattr(sys, "frozen", False)             # True dentro l'exe
 if CONGELATO:
@@ -44,6 +45,8 @@ PORTA_GUI = 5050
 DB_CLUBS = DB_DIR / "circolo_regioni.csv"
 DB_COEF_BT = DB_DIR / "coeff_beach.csv"
 ENTRY_BT = DB_DIR / "mod_el.xlsx"
+# antigrav – added constant for CS Excel template
+MODELLO_CS = DB_DIR / "mod_cs.xlsx"
 PROGRAMMAZIONE = DB_DIR / "mod_prog.xlsx"
 
 # data/archivio: copia della versione precedente prima di ogni aggiornamento; registro: quando e da cosa
@@ -105,6 +108,9 @@ COLORE_VERDE = "C6EFCE"         # corrispondenza SI
 COLORE_ROSSO = "FFC7CE"         # corrispondenza NO
 COLORE_LINK = "0000FF"          # blu hyperlink
 LARGHEZZA_COLONNA_DEFAULT = 20
+COLORE_PASTELLO_VIVAIO = "C6EFCE"       # verde pastello (vivai)
+COLORE_PASTELLO_VARIATO = "FCE4D6"      # arancione/pesca pastello (variati)
+COLORE_PASTELLO_STRANIERO = "FFC7CE"    # rosso pastello (stranieri)
 
 # QUOTE FITP (VARIANO DI ANNO IN ANNO) 
 CATEGORIE_UNDER = ["U10", "U12", "U14", "U16"]

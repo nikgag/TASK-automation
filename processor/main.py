@@ -102,7 +102,14 @@ def torneo(opz: TypeTorneo, driver=None, log=None, avanzamento=None) -> dict:
     wb = openpyxl.Workbook()
     
     if opz.cs:
-        ws_casa = wb.active
+        if not Path(conf.MODELLO_CS).is_file():
+            raise FileNotFoundError(f"Err 09: modello CS non trovato: {conf.MODELLO_CS}")
+        wb = openpyxl.load_workbook(conf.MODELLO_CS)
+
+        ws_casa = wb['Casa']
+        ws_ospite = wb['Ospite']
+        ws_stampa = wb['foglio CS']
+        ws_riepilogo = wb['Riepilogo']
 
         lista_casa = [g for g in opz.lista_pdf if g.squadra == opz.squadra_casa]
         lista_ospite = [g for g in opz.lista_pdf if g.squadra == opz.squadra_ospite]
@@ -112,32 +119,33 @@ def torneo(opz: TypeTorneo, driver=None, log=None, avanzamento=None) -> dict:
         if not lista_ospite:
             raise ValueError(f"Err 07: squadra ospite '{opz.squadra_ospite}' non trovata nel PDF.")
 
-        struttura_msg = ""
-        if lista_casa:
-            _cs.foglio_cs(ws_casa, lista_casa, opz.file_iscritti, opz.squadra_casa, opz.data_inizio, driver, log,
-                          _fase(avanzamento, f"Casa - {opz.squadra_casa}"))
-            esito['casa_cs'] = f"Trovati {len(lista_casa)} giocatori"
-            
-            struttura_msg = f"Info Struttura: Palle: {lista_casa[0].palle}, Campi: {lista_casa[0].campi}"
-            if lista_casa[0].tipo in (_cs.TIPO_A, _cs.TIPO_A_POFF) and lista_casa[0].riserva:
-                struttura_msg += f", Riserva: {lista_casa[0].riserva}"
-        
-        # Generazione foglio Ospite
-        if lista_ospite:
-            ws_ospite = wb.create_sheet('Ospite')
-            _cs.foglio_cs(ws_ospite, lista_ospite, opz.file_iscritti, opz.squadra_casa, opz.data_inizio, driver, log,
-                          _fase(avanzamento, f"Ospite - {opz.squadra_ospite}"))
-            esito['ospite_cs'] = f"Trovati {len(lista_ospite)} giocatori"
+        # 1. Compilazione foglio Casa
+        giocatori_casa = _cs.foglio_cs(ws_casa, lista_casa, opz.file_iscritti, opz.squadra_casa, opz.data_inizio, driver, log,
+                                       _fase(avanzamento, f"Casa - {opz.squadra_casa}"))
+        esito['casa_cs'] = f"Trovati {len(lista_casa)} giocatori"
 
+        # 2. Compilazione foglio Ospite
+        giocatori_ospite = _cs.foglio_cs(ws_ospite, lista_ospite, opz.file_iscritti, opz.squadra_casa, opz.data_inizio, driver, log,
+                                         _fase(avanzamento, f"Ospite - {opz.squadra_ospite}"))
+        esito['ospite_cs'] = f"Trovati {len(lista_ospite)} giocatori"
+
+        # 3. Compilazione foglio Stampa ('foglio CS')
+        _cs.foglio_stampa(ws_stampa, lista_casa, giocatori_casa, lista_ospite, giocatori_ospite)
+
+        # 4. Compilazione foglio Riepilogo
+        limiti = _cs.regole(lista_casa)
+        _cs.compila_riepilogo(ws_riepilogo, opz.squadra_casa, opz.squadra_ospite, limiti)
+
+        # 5. Salvataggio del file
         wb.save(opz.file_output)
         esito["fogli"] = wb.sheetnames
-        
-        # Stampo l'info struttura alla fine in modo che sia l'ultima o penultima riga
-        if struttura_msg:
-            log(struttura_msg)
-            
-        log(f"Salvato: {opz.file_output}")
 
+        # 6. Info Struttura loggata alla fine in modo evidente
+        struttura_msg = f"Info Struttura: Palle: {lista_casa[0].palle}, Campi: {lista_casa[0].campi}"
+        if lista_casa[0].tipo in (_cs.TIPO_A, _cs.TIPO_A_POFF) and lista_casa[0].riserva:
+            struttura_msg += f", Riserva: {lista_casa[0].riserva}"
+        log(f"\033[1m{struttura_msg}\033[0m")
+        log(f"Salvato: {opz.file_output}")
     else:
 
         df_in = _fu.leggi_iscritti(opz.file_iscritti, doppio=opz.doppio, log=log)
@@ -254,16 +262,14 @@ def analizza_pdf_campionato(percorso_pdf: str, log=None):
     Legge il PDF una sola volta, estrae i giocatori e restituisce 
     le informazioni sul campionato e le squadre disponibili.
     """
-    # 1. Usiamo la tua funzione da campionato.py
     lista_completa = _cs.leggi_lista(percorso_pdf, log)
     
     if not lista_completa:
         return {"errore": "Nessun giocatore trovato nel PDF."}
     
-    # 2. Estraiamo informazioni globali (usando il primo record)
+    
     info_campionato = lista_completa[0].etichetta # Es: "Serie B playoff/playout"
     
-    # 3. Creiamo un elenco delle squadre uniche presenti nel PDF
     squadre_disponibili = sorted(list(set(g.squadra for g in lista_completa if g.squadra)))
     
     return {

@@ -1,3 +1,9 @@
 Lista di cose da fare per finire il lavoro:
 
-1) Aggiornare il checker del cs perchè al momento da in rosso se vivaio manca, anche API delle nazioni da modificare è diverso da tessera <-> lista
+1) Lista circoli-regioni online (google sheet vedi chat gemini)
+
+2) entry list padel con aggiornamento coefficienti ogni 6 mesi
+
+3) Data di nascita in CS 
+
+4) foglio stampa per CS vedi modello cris

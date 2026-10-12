@@ -1,0 +1,12 @@
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_scheme = "semver"
+version_provider = "toml"
+version = "1.0.0"
+update_changelog_on_bump = true
+major_version_zero = false
+version_files = [
+    "core/conf.py:VERSIONE = \"(?P<version>[^\"]+)\"",
+    "strumenti/task_installer.iss:#define Versione \"(?P<version>[^\"]+)\"",
+]
