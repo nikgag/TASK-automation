@@ -23,6 +23,7 @@ data/campionati
 
 # Backup locali
 _backup_*/
+.secret_key
 
 # Sistema ed editor
 .DS_Store
@@ -33,3 +34,6 @@ _backup_*/
 Start TASK.app/
 
 
+.secret_key
+*.èdf
+data/campionati/
