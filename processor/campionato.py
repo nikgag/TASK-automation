@@ -115,6 +115,10 @@ def _chiave_nome(s) -> str:
     t = re.sub(r"[\'\u2019`\u00b4]", "", t)
     return re.sub(r"\s+", " ", t).strip().upper()
 
+#Comm. Claude:  la lista scrive "Si"/"Sì", il codice confrontava con "SI" esatto: il vivaio di lista non risultava mai. Qui lo confronto senza maiuscole/accenti, come fa corrispondenza()
+def _viv_lista(g) -> bool:
+    return _chiave_nome(g.vivaio) == "SI"
+
 #capiamo che tipo di file abbiamo davanti
 def tipo_campionato(in_file) -> str:
     """Tipo di campionato dal nome del file: 'serie A', 'serie A p-off', 'serie B'.
@@ -504,7 +508,8 @@ def foglio_cs(ws, lista: list[Lista], sgat_file: str, squadra_casa: str, data: s
         ws.cell(row=riga_idx, column=4, value=p.tessera)
         ws.cell(row=riga_idx, column=5, value=p.rank_tess or g.rank_ita or p.rank or "—")
         ws.cell(row=riga_idx, column=6, value=p.variato if p.variato in ("T", "N", "S") else (g.variato if g.variato in ("T", "N", "S") else "—"))
-        ws.cell(row=riga_idx, column=7, value="Sì" if (p.vivaio == "SI" or g.vivaio == "SI") else "No")
+        #Comm. Claude:  g.vivaio == "SI" -> _viv_lista(g) (vedi sopra)
+        ws.cell(row=riga_idx, column=7, value="Sì" if (p.vivaio == "SI" or _viv_lista(g)) else "No")
         ws.cell(row=riga_idx, column=8, value=p.nat or g.nat or "—")
         ws.cell(row=riga_idx, column=9, value=p.med or "Valido")
         ws.cell(row=riga_idx, column=10, value=g.rank_int_1_500 or g.rank_int_501 or "—")
@@ -522,7 +527,8 @@ def foglio_cs(ws, lista: list[Lista], sgat_file: str, squadra_casa: str, data: s
         ws.cell(row=riga_idx, column=16, value=p.rank_tess or "—")
         ws.cell(row=riga_idx, column=17, value=g.variato if g.variato in ("T", "N", "S") else "—")
         ws.cell(row=riga_idx, column=18, value=p.variato if p.variato in ("T", "N", "S") else "—")
-        ws.cell(row=riga_idx, column=19, value="Sì" if g.vivaio == "SI" else "—")
+        #Comm. Claude:  stesso motivo: colonna "Viv. Lista" sempre "—" anche con vivaio in lista
+        ws.cell(row=riga_idx, column=19, value="Sì" if _viv_lista(g) else "—")
         ws.cell(row=riga_idx, column=20, value="Sì" if p.vivaio == "SI" else ("No" if p.vivaio == "NO" else "NON LETTO"))
         ws.cell(row=riga_idx, column=21, value=g.nat or "—")
         ws.cell(row=riga_idx, column=22, value=p.nat or "—")
@@ -558,7 +564,8 @@ def foglio_stampa(ws, lista_casa: list[Lista], giocatori_casa: list[ply.Player],
             g = trova_in_lista(p, lista_pdf) or Lista()
 
             # Rilevamento figure/status per colorazione
-            is_viv = (p.vivaio == "SI") or (g.vivaio == "SI")
+            #Comm. Claude:  stesso motivo: se la tessera non e' letta, il vivaio di lista deve comunque colorare il foglio stampa
+            is_viv = (p.vivaio == "SI") or _viv_lista(g)
             is_var = (p.variato in ("T", "N", "S")) or (g.variato in ("T", "N", "S"))
             nat = (p.nat or g.nat or "").strip().upper()
             is_stran = nat not in ("", "ITALIA", "ITA", "ITALIANA", "—", "-")
@@ -592,6 +599,12 @@ def foglio_stampa(ws, lista_casa: list[Lista], giocatori_casa: list[ply.Player],
             elif len(colori) == 1:
                 c_cognome.fill = colori[0]
                 c_nome.fill = colori[0]
+
+            #Comm. Claude:  richiesta di Nikolo: nel foglio CS non deve comparire "N/D" (dato non trovato dal driver), al suo posto "—" come le altre celle vuote
+            for col in range(3, 15):
+                cella = ws.cell(row=r, column=col)
+                if _testo(cella.value).upper() in ("N/D", "ND", "N.D."):
+                    cella.value = "—"
 
             r += 1
 
