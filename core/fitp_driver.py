@@ -177,7 +177,7 @@ class TesseraDriver:
 
         log.warning("Tessera %s: classifica non trovata", num_tessera or "?")
         return None
- 
+
     def _leggi_vivaio(self):
             try:
                 span = self._wait_for_element(_xpath_label("vivaio"))

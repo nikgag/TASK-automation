@@ -113,6 +113,6 @@ COLORE_PASTELLO_VARIATO = "FCE4D6"      # arancione/pesca pastello (variati)
 COLORE_PASTELLO_STRANIERO = "FFC7CE"    # rosso pastello (stranieri)
 
 # QUOTE FITP (VARIANO DI ANNO IN ANNO) 
-CATEGORIE_UNDER = ["U10", "U12", "U14", "U16"]
+CATEGORIE_UNDER = ["U10", "U12", "U14", "U16","Under 10", "Under 12", "Under 14", "Under 16"]
 QUOTA_FIT_UNDER = 4.5
 QUOTA_FIT_OVER = 9.0

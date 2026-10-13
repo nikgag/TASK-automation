@@ -106,6 +106,7 @@ def _log(*_args, **_kwargs):
 def _chiave_intest(s) -> str:
     t = re.sub(r"\s+", " ", _testo(s).lower()).strip()
     t = re.sub(r"\s+>", ">", t)
+    t = re.sub(r"[\u2010\u2011\u2012\u2013\u2014\u2015]", "-", t)   # trattini Unicode → ASCII
     return re.sub(r"^rank ", "", t)
 
 def _chiave_nome(s) -> str:
@@ -151,7 +152,8 @@ def dati_squadra(righe: list[list[str]], i: int, ospite: bool = False) -> list[s
         #Comm. Claude: nei PDF A1 la riga squadra ha una cella in piu' ("Ordine di schieramento"):
         #7 celle piene invece di 6, quindi il vecchio controllo non scattava mai. La escludo.
         piene = [c.strip() for c in righe[i - offset]
-                 if c and c.strip() and c.strip().lower() != "ordine di schieramento"]
+                 if c and c.strip() and c.strip().lower() not in
+                    {"ordine di schieramento", "schieramento"}]
         if len(piene) == 6:
             return [piene[j] for j in (OSPITE if ospite else CASA)]
     return []
@@ -413,7 +415,7 @@ def trova_in_lista(p, lista: list[Lista]):
             if _chiave_nome(g.cognome) == c and n and _chiave_nome(g.nome)
             and (_chiave_nome(g.nome).startswith(n) or n.startswith(_chiave_nome(g.nome)))]
     return cand[0] if len(cand) == 1 else None
-  
+
 def lista_csv(lista: list[Lista], data_upload: str) -> Path:
     """Salva la lista PDF in un CSV persistente in data/campionati/.
 
