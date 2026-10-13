@@ -10,9 +10,11 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, coll
 PROGETTO = Path(SPECPATH).parent          # SPECPATH = cartella di questo file (strumenti/)
 DATA = PROGETTO / "data"
 
-# circolo_regioni.csv non è su git (dati FITP riservati) ma va nell'installer: senza, ci si ferma subito.
+# circolo_regioni.csv non è su git (dati FITP riservati). Se presente (es. build locale)
+# viene incluso. Se manca (es. GitHub Actions CI per aggiornamenti), prosegue senza bloccare
+# perché l'utente ha già il file salvato nel suo AppData/Local/TASK.
 if not (DATA / "circolo_regioni.csv").is_file():
-    sys.exit(f"ERRORE: manca {DATA / 'circolo_regioni.csv'}: copialo in data/ prima di creare l'installer.")
+    print("AVVISO: data/circolo_regioni.csv non trovato. Proseguo con la build senza il file iniziale.")
 
 # data/: solo i file (niente archivio/ né file nascosti). Nell'exe sono copie di partenza: avvia.py le copia
 # nella cartella dell'utente al primo avvio, senza mai sovrascrivere quelle già presenti.
