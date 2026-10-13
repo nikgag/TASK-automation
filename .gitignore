@@ -10,6 +10,7 @@ __pycache__/
 # File generati dall'app (contengono i dati degli iscritti)
 output/
 upload/
+da_fare.txt
 *.tmp
 # Comm. Claude: registro degli avvii senza terminale (avvio.log e avvio.log.old)
 avvio.log*
@@ -17,6 +18,7 @@ avvio.log*
 # Dati FITP riservati: restano solo sul computer di chi usa l'app
 data/circolo_regioni.csv
 data/archivio/
+data/campionati
 
 
 # Backup locali
