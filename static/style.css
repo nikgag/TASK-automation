@@ -406,6 +406,26 @@ select option:disabled { color: var(--ink-faint); }
 .avviso-ok > svg, .avviso-success > svg { color: var(--ok); }
 .dropzone-avviso { margin-top: 10px; margin-bottom: 0; }
 
+/* ---- Banner aggiornamento (base.html, sistema auto-update) ------------- */
+.banner-aggiorna {
+  display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+  background: linear-gradient(135deg, #2456a4, #1d7a4b); color: #fff;
+  font-size: .9rem; flex-wrap: wrap;
+}
+.banner-aggiorna > svg { flex: none; width: 18px; height: 18px; color: #fff; }
+.banner-aggiorna strong { font-weight: 600; }
+.btn-aggiorna {
+  margin-left: auto; padding: 5px 16px; border: 2px solid #fff;
+  border-radius: var(--radius-s); background: transparent; color: #fff;
+  font-weight: 600; font-size: .85rem; cursor: pointer; transition: background .15s;
+}
+.btn-aggiorna:hover { background: rgba(255,255,255,.2); }
+.btn-chiudi-banner {
+  background: none; border: none; color: rgba(255,255,255,.7); font-size: 1.3rem;
+  cursor: pointer; padding: 0 4px; line-height: 1;
+}
+.btn-chiudi-banner:hover { color: #fff; }
+
 /* ---- Esito (download / errore) ------------------------------------------ */
 .esito { padding: 36px 24px 28px; text-align: center; }
 .esito-icona {

@@ -34,6 +34,23 @@
     </div>
   </header>
 
+  {#- Banner aggiornamento: compare solo quando il context_processor trova una release più recente -#}
+  {% if aggiornamento is defined and aggiornamento %}
+    <div class="banner-aggiorna" id="bannerAggiorna" role="status">
+      {{ icona('info') }}
+      <span>
+        <strong>Nuova versione disponibile: {{ aggiornamento.versione }}</strong>
+        {% if aggiornamento.nome and aggiornamento.nome != aggiornamento.tag %}
+          — {{ aggiornamento.nome }}
+        {% endif %}
+      </span>
+      <form action="{{ url_for('aggiorna_app') }}" method="post" style="display:inline; margin:0;">
+        <button type="submit" class="btn-aggiorna">Aggiorna ora</button>
+      </form>
+      <button type="button" class="btn-chiudi-banner" aria-label="Chiudi" onclick="document.getElementById('bannerAggiorna').hidden=true">&times;</button>
+    </div>
+  {% endif %}
+
   <main class="{% block larghezza %}stretto{% endblock %}">
     {#- Messaggi flash di Flask: flash("testo", "error" | "warning" | "success" | "message") -#}
     {% with messaggi_flash = get_flashed_messages(with_categories=true) %}

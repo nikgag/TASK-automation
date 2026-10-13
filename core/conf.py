@@ -7,6 +7,7 @@ CD_DIR = Path.home()
 # percorsi assoluti dalla cartella del progetto: funzionano da qualsiasi cartella si lanci python
 BASE_DIR = Path(__file__).resolve().parent.parent
 VERSIONE = "2.0.0"
+GITHUB_REPO = "nikgag/TASK-automation"       # owner/repo per il sistema di aggiornamento
 
 CONGELATO = getattr(sys, "frozen", False)             # True dentro l'exe
 if CONGELATO:

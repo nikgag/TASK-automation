@@ -35,6 +35,7 @@ import pdfplumber
 
 from core import conf, lavori
 from core.errori import ErroreUtente, codici_non_documentati, cosa_fare
+from core import aggiorna
 from processor import campionato as _cs
 from processor import data_update
 from processor import file_utente as _fu
@@ -147,6 +148,32 @@ def _watchdog() -> None:
 @app.context_processor
 def _lavoro_attivo():
     return {"lavoro_attivo": lavori.in_corso()}
+
+
+# Aggiornamento automatico: controlla GitHub Releases in background (solo nell'exe).
+# coll: aggiorna.release_disponibile (cache, no rete) | html: base.html (banner)
+@app.context_processor
+def _aggiornamento_disponibile():
+    return {"aggiornamento": aggiorna.release_disponibile()}
+
+
+# Rotta di aggiornamento: scarica il nuovo exe e riavvia l'applicazione.
+# coll: aggiorna.scarica_e_installa | html: base.html (link nel banner)
+@app.route("/aggiorna", methods=["POST"])
+def aggiorna_app():
+    rel = aggiorna.release_disponibile()
+    if not rel or not rel.get("url_asset"):
+        flash("Nessun aggiornamento disponibile al momento.", "warning")
+        return redirect(request.referrer or url_for("index"))
+    if lavori.in_corso() is not None:
+        flash("C'è un'elaborazione in corso: aggiorna dopo che è finita.", "warning")
+        return redirect(request.referrer or url_for("index"))
+    try:
+        messaggio = aggiorna.scarica_e_installa(rel["url_asset"])
+        flash(messaggio, "success")
+    except Exception as e:
+        flash(f"Aggiornamento non riuscito: {e}", "error")
+    return redirect(request.referrer or url_for("index"))
 
 
 def _scelta(campo: str, ammessi: tuple) -> str:
@@ -593,6 +620,7 @@ def avvia_server(porta: int) -> None:
         
     if not DEBUG or os.environ.get("WERKZEUG_RUN_MAIN"):
         threading.Thread(target=_watchdog, daemon=True).start()
+        aggiorna.controlla_in_background()    # controlla GitHub Releases (solo nell'exe, non blocca)
     # ATTENZIONE (solo FITP_DEBUG=1): se salvi un .py mentre un'elaborazione gira, Flask si riavvia e la perde.
     app.run(host="127.0.0.1", port=porta, debug=DEBUG, threaded=True)
 
