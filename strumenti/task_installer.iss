@@ -4,7 +4,7 @@
 ; AppData\Local\TASK e NON vengono toccati da aggiornamenti o disinstallazione.
 
 ; versione: da aumentare a ogni nuova versione distribuita
-#define Versione "1.0.0"
+#define Versione "2.0.0"
 
 [Setup]
 ; AppId: identifica TASK per aggiornamenti e disinstallazione. Non cambiarlo mai.
