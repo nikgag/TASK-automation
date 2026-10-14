@@ -4,14 +4,15 @@ Flusso:
   1. `controlla()` → chiama l'API pubblica di GitHub (no token) e confronta
      il tag più recente con `conf.VERSIONE`.  Restituisce un dizionario
      con i dati della release se c'è un aggiornamento, altrimenti None.
-  2. `scarica_e_installa(url_asset)` → scarica il nuovo .exe in una
-     cartella temporanea e prepara un piccolo script (.bat / .sh) che:
-       a. aspetta che il processo corrente si chiuda,
-       b. sovrascrive il vecchio .exe col nuovo,
-       c. rilancia l'applicazione.
-     Infine chiude il processo corrente.
+  2. `scarica_e_installa(url_asset)` → scarica TASK-Setup.exe (l'installer
+     allegato alla Release) in una cartella temporanea, controlla che il file
+     sia intero e lo lancia in modalità silenziosa. Poi TASK si chiude da solo:
+     l'installer sostituisce i file del programma e al termine riavvia TASK.
 
-Funziona SOLO nell'exe (conf.CONGELATO = True): da sorgente non serve
+#Comm. Claude:  docstring riscritta. Prima il file scaricato (l'installer!) veniva copiato sopra TASK.exe da un .bat
+#Comm. Claude:  in loop senza limite e senza finestra: ora si esegue l'installer, che sa già aggiornare i file (stesso AppId).
+
+Funziona SOLO nell'exe per Windows (conf.CONGELATO = True): da sorgente non serve
 aggiornare, basta fare `git pull`.  In modalità sorgente `controlla()`
 restituisce sempre None.
 """
@@ -22,7 +23,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import textwrap
+#Comm. Claude:  tolto "import textwrap": serviva solo a scrivere i vecchi script .bat/.sh
 import threading
 import time
 import urllib.error
@@ -37,6 +38,17 @@ from core import conf
 # background e salviamo il risultato.  Le pagine leggono _cache.
 _TIMEOUT_SECONDI = 5                          # timeout della richiesta HTTP
 _INTERVALLO_CONTROLLO = 3600                   # secondi tra un controllo e l'altro (1 ora)
+
+#Comm. Claude:  costanti nuove per il download: un limite a ogni attesa, così una rete lenta o un file difettoso
+#Comm. Claude:  producono un errore chiaro (mostrato nella pagina) invece di un'attesa infinita
+_TIMEOUT_DOWNLOAD = 30                         # s senza ricevere dati: oltre, il download fallisce
+_DURATA_MAX_DOWNLOAD = 600                     # s: tetto totale del download (10 minuti)
+_DIMENSIONE_MIN = 10 * 1024 * 1024             # byte: l'installer pesa ~50 MB; sotto i 10 MB è un file sbagliato
+#Comm. Claude:  flag di Windows (valori fissi, definiti qui per non dipendere dal sistema): l'installer parte come
+#Comm. Claude:  processo indipendente e NON si chiude quando TASK termina
+_DETACHED_PROCESS = 0x00000008
+_CREATE_NEW_PROCESS_GROUP = 0x00000200
+_in_aggiornamento = threading.Lock()           # evita due download insieme se si clicca due volte "Aggiorna ora"
 
 class _Cache:
     """Stato dell'ultimo controllo aggiornamenti."""
@@ -56,12 +68,14 @@ def controlla(forza: bool = False) -> Optional[dict]:
     """Controlla se c'è una versione più recente su GitHub.
 
     Restituisce un dict ``{"tag": "v2.1.0", "nome": "...", "note": "...",
-    "url_asset": "https://...", "nome_file": "TASK_v2.1.0_win64.exe"}``
+    "url_asset": "https://...", "nome_file": "TASK-Setup.exe"}``
     se c'è un aggiornamento, altrimenti ``None``.
 
     In modalità sorgente (non .exe) restituisce sempre ``None``.
     """
-    if not conf.CONGELATO:
+    #Comm. Claude:  aggiunto sys.platform: la Release contiene solo l'installer Windows, quindi su altri sistemi
+    #Comm. Claude:  il banner mostrerebbe un pulsante "Aggiorna ora" che non può funzionare
+    if not conf.CONGELATO or sys.platform != "win32":
         return None
 
     adesso = time.time()
@@ -121,6 +135,7 @@ def controlla(forza: bool = False) -> Optional[dict]:
 
 def controlla_in_background() -> None:
     """Lancia il controllo in un thread separato (non blocca l'avvio)."""
+    _pulisci_vecchi_download()   #Comm. Claude:  toglie i residui dell'aggiornamento precedente (cartelle task_update_* in TEMP)
     threading.Thread(target=controlla, daemon=True, name="aggiorna-check").start()
 
 
@@ -131,37 +146,39 @@ def release_disponibile() -> Optional[dict]:
 
 
 def scarica_e_installa(url_asset: str) -> str:
-    """Scarica il nuovo exe e prepara lo script di sostituzione.
+    """Scarica TASK-Setup.exe e lo lancia in silenzioso; TASK si chiude e l'installer lo aggiorna e lo riavvia.
 
-    Restituisce un messaggio di stato.  L'applicazione si chiude da sola
-    dopo aver lanciato lo script.
+    Restituisce un messaggio di stato. Se qualcosa va storto solleva RuntimeError con un testo chiaro
+    (la rotta /aggiorna di app.py lo mostra nella pagina).
     """
-    if not conf.CONGELATO or not url_asset:
-        return "Aggiornamento disponibile solo nell'exe."
+    #Comm. Claude:  funzione riscritta (vedi docstring del modulo): scarica l'installer con timeout e controlli,
+    #Comm. Claude:  lo esegue in silenzioso e chiude TASK. Nessun .bat, nessun loop: se qualcosa va storto c'è un errore.
+    if not conf.CONGELATO or sys.platform != "win32" or not url_asset:
+        return "Aggiornamento automatico disponibile solo nell'exe per Windows."
+    # l'indirizzo arriva dall'API di GitHub, ma lo riconfermo: deve essere un allegato di QUESTO repository
+    prefisso = f"https://github.com/{conf.GITHUB_REPO}/releases/download/".lower()
+    if not url_asset.lower().startswith(prefisso):
+        raise RuntimeError(f"indirizzo di download non riconosciuto: {url_asset}")
+    if not _in_aggiornamento.acquire(blocking=False):
+        return "Aggiornamento già in corso: attendi qualche istante."
 
-    exe_corrente = Path(sys.executable).resolve()
     cartella_temp = Path(tempfile.mkdtemp(prefix="task_update_"))
-    nuovo_exe = cartella_temp / exe_corrente.name
-
-    # 1. Scarico il file
-    print(f"[aggiorna] Scarico {url_asset} …", flush=True)
     try:
-        urllib.request.urlretrieve(url_asset, str(nuovo_exe))
-    except Exception as e:
+        setup = cartella_temp / "TASK-Setup.exe"
+        print(f"[aggiorna] Scarico {url_asset} …", flush=True)
+        _scarica(url_asset, setup, _dimensione_attesa(url_asset))
+        print(f"[aggiorna] Download completato: {setup}", flush=True)
+        _lancia_installer(setup)
+    except Exception:
         shutil.rmtree(cartella_temp, ignore_errors=True)
-        raise RuntimeError(f"Download fallito: {e}") from e
-    print(f"[aggiorna] Download completato: {nuovo_exe}", flush=True)
+        _in_aggiornamento.release()
+        raise   # l'errore arriva intero alla rotta /aggiorna (nessun errore nascosto)
 
-    # 2. Preparo lo script che sostituisce l'exe dopo la chiusura
-    if sys.platform == "win32":
-        _script_windows(exe_corrente, nuovo_exe, cartella_temp)
-    else:
-        _script_unix(exe_corrente, nuovo_exe, cartella_temp)
-
-    # 3. Chiudo il processo corrente (il watchdog/Flask si spegne)
-    print("[aggiorna] Chiudo per applicare l'aggiornamento…", flush=True)
-    threading.Timer(1.0, lambda: os._exit(0)).start()
-    return "Aggiornamento in corso: TASK si riavvierà automaticamente."
+    # L'installer è partito. Se TASK restasse aperto gli bloccherebbe i file da sostituire: mi chiudo io
+    # dopo 1 s (il tempo di rispondere al browser). Il lock resta preso: il processo sta per terminare.
+    print("[aggiorna] Installer avviato: chiudo TASK per applicare l'aggiornamento…", flush=True)
+    threading.Timer(1.0, _chiudi_programma).start()
+    return "Aggiornamento in corso: TASK si riavvierà da solo tra poco."
 
 
 # ── Utilità interne ──────────────────────────────────────────────────────
@@ -191,39 +208,62 @@ def _trova_asset(assets: list) -> Optional[dict]:
     return assets[0] if assets else None
 
 
-def _script_windows(exe_vecchio: Path, exe_nuovo: Path, cartella_temp: Path) -> None:
-    """Crea e lancia un .bat che aspetta, sostituisce e rilancia."""
-    bat = cartella_temp / "_aggiorna.bat"
-    bat.write_text(textwrap.dedent(f"""\
-        @echo off
-        echo Aggiornamento TASK in corso...
-        timeout /t 3 /nobreak >nul
-        :riprova
-        copy /y "{exe_nuovo}" "{exe_vecchio}" >nul 2>&1
-        if errorlevel 1 (
-            timeout /t 2 /nobreak >nul
-            goto riprova
-        )
-        start "" "{exe_vecchio}"
-        rmdir /s /q "{cartella_temp}"
-    """), encoding="utf-8")
-    subprocess.Popen(
-        ["cmd", "/c", str(bat)],
-        creationflags=subprocess.CREATE_NO_WINDOW,
-        close_fds=True,
-    )
+#Comm. Claude:  funzioni nuove (sostituiscono _script_windows/_script_unix, rimossi)
+def _dimensione_attesa(url_asset: str) -> int:
+    """Dimensione in byte dell'allegato, come dichiarata da GitHub (0 se non la conosco)."""
+    rel = release_disponibile()
+    return rel.get("dimensione", 0) if rel and rel.get("url_asset") == url_asset else 0
 
 
-def _script_unix(exe_vecchio: Path, exe_nuovo: Path, cartella_temp: Path) -> None:
-    """Crea e lancia uno script shell che aspetta, sostituisce e rilancia."""
-    sh = cartella_temp / "_aggiorna.sh"
-    sh.write_text(textwrap.dedent(f"""\
-        #!/bin/bash
-        sleep 3
-        cp -f "{exe_nuovo}" "{exe_vecchio}"
-        chmod +x "{exe_vecchio}"
-        open "{exe_vecchio}" 2>/dev/null || "{exe_vecchio}" &
-        rm -rf "{cartella_temp}"
-    """))
-    sh.chmod(0o755)
-    subprocess.Popen(["/bin/bash", str(sh)], close_fds=True)
+def _scarica(url: str, destinazione: Path, attesa: int) -> None:
+    """Scarica `url` in `destinazione` a blocchi. Errore chiaro se lento, incompleto o non è un programma Windows."""
+    richiesta = urllib.request.Request(url, headers={"User-Agent": "TASK-updater"})
+    inizio = time.time()
+    ricevuti = 0
+    try:
+        with urllib.request.urlopen(richiesta, timeout=_TIMEOUT_DOWNLOAD) as risposta, \
+                open(destinazione, "wb") as file:
+            while True:
+                blocco = risposta.read(1024 * 1024)
+                if not blocco:
+                    break
+                file.write(blocco)
+                ricevuti += len(blocco)
+                if time.time() - inizio > _DURATA_MAX_DOWNLOAD:
+                    raise RuntimeError("il download dura troppo (oltre 10 minuti): controlla la connessione e riprova")
+    except OSError as e:   # comprende URLError, HTTPError e il timeout di rete
+        raise RuntimeError(f"download fallito: {e}") from e
+
+    if attesa and ricevuti != attesa:
+        raise RuntimeError(f"file scaricato incompleto ({ricevuti} byte invece di {attesa}): riprova")
+    if ricevuti < _DIMENSIONE_MIN:
+        raise RuntimeError(f"file scaricato troppo piccolo ({ricevuti} byte): non sembra l'installer")
+    with open(destinazione, "rb") as file:
+        if file.read(2) != b"MZ":   # ogni .exe di Windows comincia con queste due lettere
+            raise RuntimeError("il file scaricato non è un programma Windows valido")
+
+
+def _lancia_installer(setup: Path) -> None:
+    """Avvia l'installer in silenzioso, come processo indipendente. Scrive il dettaglio in aggiornamento.log."""
+    log = conf.DATI_DIR / "aggiornamento.log"   # utile se un aggiornamento non riesce: è il registro di Inno Setup
+    # /VERYSILENT nessuna finestra | /SUPPRESSMSGBOXES nessun riquadro | /NORESTART mai riavviare il PC
+    # /CLOSEAPPLICATIONS chiude i programmi che bloccano i file | /LOG scrive il registro dell'installazione
+    # Stringa unica (non lista): Inno Setup vuole le virgolette attorno al percorso del log, anche con spazi.
+    comando = f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /LOG="{log}"'
+    subprocess.Popen(comando, creationflags=_DETACHED_PROCESS | _CREATE_NEW_PROCESS_GROUP, close_fds=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _chiudi_programma() -> None:
+    """Termina TASK subito, da tutti i thread (come fa il watchdog di app.py)."""
+    os._exit(0)
+
+
+def _pulisci_vecchi_download() -> None:
+    """Cancella da TEMP le cartelle task_update_* vecchie di oltre 10 minuti (residui di un aggiornamento passato)."""
+    if not conf.CONGELATO:
+        return
+    limite = time.time() - 600
+    for cartella in Path(tempfile.gettempdir()).glob("task_update_*"):
+        if cartella.is_dir() and cartella.stat().st_mtime < limite:
+            shutil.rmtree(cartella, ignore_errors=True)   # file ancora in uso: lo si riprova al prossimo avvio

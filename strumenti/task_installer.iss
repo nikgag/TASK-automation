@@ -44,4 +44,5 @@ Name: "{autoprograms}\TASK"; Filename: "{app}\TASK.exe"
 Name: "{autodesktop}\TASK"; Filename: "{app}\TASK.exe"
 
 [Run]
-Filename: "{app}\TASK.exe"; Description: "Avvia TASK"; Flags: nowait postinstall skipifsilent
+; Comm. Claude: tolto skipifsilent: dopo l'aggiornamento silenzioso lanciato da core/aggiorna.py TASK deve ripartire da solo
+Filename: "{app}\TASK.exe"; Description: "Avvia TASK"; Flags: nowait postinstall
