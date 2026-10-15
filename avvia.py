@@ -182,6 +182,34 @@ def copia_dati_iniziali() -> None:
             print(f"Primo avvio: copiato {sorgente.name} in {conf.DB_DIR}")
 
 
+#Comm. Claude:  funzione nuova: i modelli (mod_*.xlsx) sono moduli di compilazione, non dati dell'utente.
+#Comm. Claude:  a ogni nuova versione dell'exe li riallineo a quelli dell'installer. Dati veri (coeff_beach, circoli) restano intatti.
+MODELLI_AGGIORNABILI = ("mod_cs.xlsx", "mod_el.xlsx", "mod_prog.xlsx")
+MARCA_MODELLI = "versione_modelli.txt"            # contiene la versione per cui i modelli sono già stati copiati
+
+
+def aggiorna_modelli() -> None:
+    """Dopo un aggiornamento copia i modelli nuovi nella cartella dati (una sola volta per versione).
+
+    Se un modello non si può copiare (es. aperto in Excel) TASK si ferma con un messaggio chiaro: non va avanti
+    con un modello vecchio.
+    """
+    marca = conf.DB_DIR / MARCA_MODELLI
+    if marca.is_file() and marca.read_text(encoding="utf-8").strip() == conf.VERSIONE:
+        return
+    for nome in MODELLI_AGGIORNABILI:
+        sorgente = conf.DATI_INIZIALI_DIR / nome
+        if not sorgente.is_file():
+            messaggio_fatale(f"Nell'installazione di TASK manca il modello {nome}.\nReinstalla TASK.")
+        try:
+            shutil.copy2(sorgente, conf.DB_DIR / nome)
+        except OSError as e:
+            messaggio_fatale(f"Non riesco ad aggiornare il modello {nome} ({e.strerror}).\n"
+                             "Se è aperto in Excel chiudilo, poi riapri TASK.")
+    marca.write_text(conf.VERSIONE, encoding="utf-8")
+    print(f"Modelli aggiornati alla versione {conf.VERSIONE}.")
+
+
 def main() -> None:
     #Comm. Claude:  nell'exe si lavora nella cartella dati; da sorgente nella cartella del progetto (come prima)
     conf.DATI_DIR.mkdir(parents=True, exist_ok=True)
@@ -192,6 +220,7 @@ def main() -> None:
         Path(os.environ["TASK_SEGNALE"]).touch()
     if conf.CONGELATO:   #Comm. Claude:  nell'exe Python e librerie sono già dentro: niente .venv né pip
         copia_dati_iniziali()
+        aggiorna_modelli()   #Comm. Claude:  dopo l'aggiornamento: modelli nuovi nella cartella dati
     else:
         controlla_python()
         prepara_ambiente()
