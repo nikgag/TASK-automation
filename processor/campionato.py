@@ -115,7 +115,6 @@ def _chiave_nome(s) -> str:
     t = re.sub(r"[\'\u2019`\u00b4]", "", t)
     return re.sub(r"\s+", " ", t).strip().upper()
 
-#Comm. Claude:  la lista scrive "Si"/"Sì", il codice confrontava con "SI" esatto: il vivaio di lista non risultava mai. Qui lo confronto senza maiuscole/accenti, come fa corrispondenza()
 def _viv_lista(g) -> bool:
     return _chiave_nome(g.vivaio) == "SI"
 
@@ -407,8 +406,6 @@ def trova_in_lista(p, lista: list[Lista]):
     for g in lista:
         if (_chiave_nome(g.cognome), _chiave_nome(g.nome)) == (c, n):
             return g
-    #Comm. Claude: stringa completa senza spazi, uguale o prefisso (testo sbordato tra le
-    #colonne: "LOKOLI LA"+"URENT ..." vs "LOKOLI"+"LAURENT ...", oppure cognomi doppi)
     tot = (c + n).replace(" ", "")
     cand = [g for g in lista if len(tot) >= 6 and
             (lambda t: t.startswith(tot) or tot.startswith(t))(
@@ -495,11 +492,11 @@ def foglio_cs(ws, lista: list[Lista], sgat_file: str, squadra_casa: str, data: s
 
         # Determina l'esito per la colonna A (coerente con le formule di mod_cs.xlsx)
         if corr:
-            esito_cella = "✔ OK"
+            esito_cella = "OK"
         elif p.rank_tess == "NON LETTO" or p.med is None:
-            esito_cella = "⚠ VERIFICA"
+            esito_cella = "VERIFICA"
         else:
-            esito_cella = "✖ NO"
+            esito_cella = "NO"
 
         # Colonne A:M (visibili)
         ws.cell(row=riga_idx, column=1, value=esito_cella)
@@ -560,7 +557,7 @@ def foglio_stampa(ws, lista_casa: list[Lista], giocatori_casa: list[ply.Player],
 
         # Scrittura giocatori
         r = r_start
-        for p in giocatori:
+        for p in sort_stampa(giocatori, lista_pdf):
             g = trova_in_lista(p, lista_pdf) or Lista()
 
             # Rilevamento figure/status per colorazione
@@ -584,13 +581,15 @@ def foglio_stampa(ws, lista_casa: list[Lista], giocatori_casa: list[ply.Player],
             c_nome = ws.cell(row=r, column=5, value=p.nome)                       # Nome
             ws.cell(row=r, column=6, value=p.tessera)                             # Num. Tessera
             ws.cell(row=r, column=7, value=p.rank_tess or g.rank_ita or p.rank)   # Classifica
-            ws.cell(row=r, column=8, value=p.variato or g.variato or "—")         # Variato
-            ws.cell(row=r, column=9, value="Sì" if is_viv else "—")               # Vivaio
+            ws.cell(row=r, column=8, value=(p.variato or g.variato) if is_var else None)         # Variato
+            ws.cell(row=r, column=9, value="Sì" if is_viv else None)               # Vivaio
             ws.cell(row=r, column=10, value=p.nat or g.nat or "—")                # Nazionalità
             ws.cell(row=r, column=11, value=g.rank_int_1_500 or "—")              # INT 1-500
             ws.cell(row=r, column=12, value=g.rank_int_501 or "—")                # INT 501>
             ws.cell(row=r, column=13, value="—")                                  # Data Nascita (non da login)
-            ws.cell(row=r, column=14, value=p.med or "Valido")                    # Visita Medica
+            ws.cell(row=r, column=14, value=p.med.replace('Scaduto il','') or "Valido")                    # Visita Medica
+            ws.cell(row=r, column=15, value=p.sanz) #Sanzionato
+            ws.cell(row=r, column=16, value=p.abil) #Abilitato
 
             # Applicazione colori pastello
             if len(colori) >= 2:
@@ -599,12 +598,6 @@ def foglio_stampa(ws, lista_casa: list[Lista], giocatori_casa: list[ply.Player],
             elif len(colori) == 1:
                 c_cognome.fill = colori[0]
                 c_nome.fill = colori[0]
-
-            #Comm. Claude:  richiesta di Nikolo: nel foglio CS non deve comparire "N/D" (dato non trovato dal driver), al suo posto "—" come le altre celle vuote
-            for col in range(3, 15):
-                cella = ws.cell(row=r, column=col)
-                if _testo(cella.value).upper() in ("N/D", "ND", "N.D."):
-                    cella.value = "—"
 
             r += 1
 
@@ -620,6 +613,28 @@ def foglio_stampa(ws, lista_casa: list[Lista], giocatori_casa: list[ply.Player],
     if lista_ospite:
         ws.cell(row=22, column=3, value=lista_ospite[0].squadra)
         _scrivi_blocco(24, lista_ospite, giocatori_ospite)
+
+def sort_stampa(giocatori: list[ply.Player], lista_pdf: list[Lista]) -> list[ply.Player]:
+    """Ordina i giocatori per numero di schieramento dalla lista PDF.
+
+    Il numero di schieramento può essere:
+    - "3"   → posizione intera normale
+    - "9="  → ex-aequo alla posizione 9 (suffisso '=' ignorato per il sort)
+    - ""    → nessuno schieramento: va in fondo, mantiene ordine originale
+
+    I giocatori senza corrispondenza in lista o senza n_schieramento vanno in coda.
+    """
+    def _chiave_schieramento(p: ply.Player) -> tuple:
+        g = trova_in_lista(p, lista_pdf)
+        raw = (g.n_schieramento).strip() if g else ""
+        # rimuove il suffisso '=' per estrarre il numero puro
+        raw_num = raw.rstrip("=").strip()
+        try:
+            return (0, int(raw_num), raw)   # (ha_numero, numero, tiebreak_stringa)
+        except ValueError:
+            return (1, 0, raw)              # nessun numero → in fondo
+
+    return sorted(giocatori, key=_chiave_schieramento)
 
 def compila_riepilogo(ws, casa: str, ospite: str, limiti: list[int]) -> None:
     """Compila il foglio 'Riepilogo' inserendo i dettagli dell'incontro e i limiti RTS."""

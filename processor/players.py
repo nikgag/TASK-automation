@@ -37,6 +37,8 @@ class Player:
     link: str = ""
     med: str | None = None
     nat: str | None = None
+    sanz: str | None = None
+    abil: str | None = None
     coefficiente: float = 0.0        # Attivo nel beach 
     numero_squadra: str | int | None = None  
     valore_coppia: int | None = None #valore coppia tennis
@@ -282,6 +284,8 @@ def campionato(df: pd.DataFrame, data: str | None = None, team: str | None = Non
             link = link,
             med = tessera_record[0],
             nat = tessera_record[1],
+            sanz=tessera_record[5],
+            abil=tessera_record[6],
             squadra = team, 
             vivaio = tessera_record[2], 
             variato = tessera_record[3],

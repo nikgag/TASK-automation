@@ -194,20 +194,39 @@ class TesseraDriver:
             log.warning("Nessun campo 'TRASFERITO' trovato")
             value = None
         return value if value in ("T", "N", "S") else None
+    
+    def _leggi_sanzionato(self):
+        try:
+            span = self._wait_for_element(_xpath_label("sanzionato"))
+            return self._valore_accanto(span)
+        except Exception:
+            log.warning('SANZIONATO non trovato')
+            return None
         
-    # --- metodi principali ----------------------------------------------------
-    def tessera_cs(
-        self, url, data_cs, num_tessera=None
-    ):
+    def _leggi_abilitato(self):
+        try:
+            span = self._wait_for_element(_xpath_label("abilitato"))
+            return self._valore_accanto(span)
+        except Exception:
+            log.warning('ABILITATO non trovato')
+            return None
+
+# --- metodi principali ----------------------------------------------------
+    def tessera_cs(self, url, data_cs, num_tessera=None):
         """Carica la pagina UNA volta e restituisce
-        (certificato, cittadinanza, vivaio, variato, classifica)."""
+        (certificato, cittadinanza, vivaio, variato, classifica, sanzionato, abilitato)."""
         if not self._apri(url):
-            return "N/D", None, None, None, None
+            return "N/D", None, None, None, None, None, None
         medico = self._leggi_certificato(data_cs, data_cs, num_tessera)
         cittadinanza = self._leggi_cittadinanza()
         classifica = self._leggi_classifica(num_tessera)
-        vivaio = self._leggi_vivaio(); variato = self._leggi_variato()
-        return medico, cittadinanza, vivaio, variato, classifica
+        vivaio = self._leggi_vivaio()
+        variato = self._leggi_variato()
+        sanzionato = self._leggi_sanzionato()
+        abilitato = self._leggi_abilitato()
+
+        return medico, cittadinanza, vivaio, variato, classifica, sanzionato, abilitato
+         #0=med, 1=nat, 2=viv, 3=var, 4=rank, 5=sanz, 6=abil
 
     def tessera_torneo(self, url, data_inizio_str, data_fine_str, num_tessera=None):
         """Carica la pagina UNA volta e restituisce (certificato, cittadinanza).
@@ -243,3 +262,13 @@ class TesseraDriver:
         if not self._apri(url):
             return None
         return self._leggi_variato()
+    
+    def sanzionato(self, url):
+        if not self._apri(url):
+            return None
+        return self._leggi_sanzionato()
+
+    def abilitato(self, url):
+        if not self._apri(url):
+            return None
+        return self._leggi_abilitato()

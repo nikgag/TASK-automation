@@ -36,12 +36,6 @@ CODICI_ERRORI = RISORSE_DIR / "codici_errori.csv"
 # non 5000: sui Mac recenti è occupata da AirPlay Receiver
 PORTA_GUI = 5050
 
-# #HTML
-# INDEX = HTML_DIR / 'index.html'
-# UPLOAD = HTML_DIR / 'upload.html'
-# DOWNLOAD = HTML_DIR / 'download.html'
-
-
 # DataBase FITP
 DB_CLUBS = DB_DIR / "circolo_regioni.csv"
 DB_COEF_BT = DB_DIR / "coeff_beach.csv"
@@ -109,9 +103,9 @@ COLORE_VERDE = "C6EFCE"         # corrispondenza SI
 COLORE_ROSSO = "FFC7CE"         # corrispondenza NO
 COLORE_LINK = "0000FF"          # blu hyperlink
 LARGHEZZA_COLONNA_DEFAULT = 20
-COLORE_PASTELLO_VIVAIO = "C6EFCE"       # verde pastello (vivai)
-COLORE_PASTELLO_VARIATO = "FCE4D6"      # arancione/pesca pastello (variati)
-COLORE_PASTELLO_STRANIERO = "FFC7CE"    # rosso pastello (stranieri)
+COLORE_PASTELLO_VIVAIO = "FFC6EFCE"       # verde pastello (vivai)
+COLORE_PASTELLO_VARIATO = "FFFFFFBA"      # giallo pastello (variati)
+COLORE_PASTELLO_STRANIERO = "FFBAE1FF"    # blu pastello (stranieri)
 
 # QUOTE FITP (VARIANO DI ANNO IN ANNO) 
 CATEGORIE_UNDER = ["U10", "U12", "U14", "U16","Under 10", "Under 12", "Under 14", "Under 16"]
