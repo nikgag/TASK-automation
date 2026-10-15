@@ -1,3 +1,9 @@
+## v2.0.3 (2026-10-15)
+
+### Fix
+
+- updating CS files and Selenium Driver for Abil/Sanz data extraction
+
 ## v2.0.2 (2026-10-13)
 
 ## v2.0.1 (2026-10-13)
