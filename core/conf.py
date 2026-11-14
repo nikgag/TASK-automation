@@ -6,7 +6,7 @@ from pathlib import Path
 CD_DIR = Path.home()
 # percorsi assoluti dalla cartella del progetto: funzionano da qualsiasi cartella si lanci python
 BASE_DIR = Path(__file__).resolve().parent.parent
-VERSIONE = "2.0.4"
+VERSIONE = "2.1.0"
 GITHUB_REPO = "nikgag/TASK-automation"       
 
 CONGELATO = getattr(sys, "frozen", False)             # True dentro l'exe

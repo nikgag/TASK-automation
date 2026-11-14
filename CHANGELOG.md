@@ -1,3 +1,9 @@
+## v2.1.0 (2026-11-14)
+
+### Feat
+
+- now db clubs is an online gs shared
+
 ## v2.0.4 (2026-10-15)
 
 ### Fix
