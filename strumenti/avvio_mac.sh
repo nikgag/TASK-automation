@@ -1,5 +1,5 @@
 #!/bin/bash
-# Comm. Claude: lanciatore Mac. Gira DENTRO "Start TASK.app" (Contents/Resources/avvio_mac.sh), chiamato dall'applet.
+# lanciatore Mac. Gira DENTRO "Start TASK.app" (Contents/Resources/avvio_mac.sh), chiamato dall'applet.
 # Questo è il sorgente: dopo una modifica ricrea l'app con  bash strumenti/crea_app_mac.sh
 # Perché un'applet e non un semplice script nell'app: macOS protegge Scrivania/Documenti/Download (TCC).
 # Uno script non firmato riceve un "Operation not permitted" SENZA che compaia la richiesta di permesso;

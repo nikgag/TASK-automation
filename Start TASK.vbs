@@ -1,4 +1,4 @@
-' Comm. Claude: sostituisce "Start TASK.bat". Doppio clic su "Start TASK.vbs" -> avvia.py, SENZA finestra nera.
+' Doppio clic su "Start TASK.vbs" -> avvia.py, SENZA finestra nera.
 ' Usa pyw/pythonw (Python senza console) e nasconde anche i comandi di controllo (Run ..., 0).
 ' Solo caratteri ASCII: Windows legge i .vbs nella codifica locale, le lettere accentate uscirebbero storte.
 Option Explicit

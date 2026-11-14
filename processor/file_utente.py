@@ -224,7 +224,7 @@ COLONNE_CIRCOLI = {"Circolo": ("circolo",), "Provincia": ("provincia",)}
 def modulo_circoli(circoli: list[str], province: dict[str, str]) -> bytes:
     """Excel da compilare: una riga per circolo, provincia a tendina, regione automatica.
 
-    `province`: provincia -> regione, scritte come in circolo_regioni.csv (data_update.province_circoli)."""
+    `province`: provincia -> regione, scritte come nel DB circoli online (data_update.province_circoli)."""
     wb = Workbook()
     ws = wb.active
     ws.title = FOGLIO_CIRCOLI
@@ -255,15 +255,15 @@ def modulo_circoli(circoli: list[str], province: dict[str, str]) -> bytes:
 
     istruzioni = wb.create_sheet("Istruzioni", 1)
     for riga in (
-        ["Circoli non trovati in data/circolo_regioni.csv (nel foglio Giocatori hanno regione ND)"],
+        ["Circoli non trovati nel DB circoli (nel foglio Giocatori hanno regione ND)"],
         [""],
         ["1. Nel foglio «Circoli da mappare», per ogni circolo scegli la provincia DEL CIRCOLO dal menu a tendina (colonna B)."],
         ["   La regione (colonna C) compare da sola: serve solo per controllare."],
         ["2. Se non vuoi aggiungere un circolo, lascia vuota la sua provincia."],
         ["3. Non cambiare il nome del circolo: deve restare identico a quello di SGAT."],
         ["4. Salva e ricarica questo file nell'app: pagina finale dell'elaborazione, oppure scheda «Circoli»"],
-        ["   nella pagina Tennis o Beach. I circoli vengono aggiunti in fondo a circolo_regioni.csv;"],
-        ["   la versione precedente del file resta in data/archivio/."],
+        ["   nella pagina Tennis o Beach. I circoli vengono aggiunti al DB circoli condiviso."],
+        ["   Se hai scelto una provincia sbagliata, scrivilo a chi gestisce TASK: solo lui può correggerla."],
     ):
         istruzioni.append(riga)
     istruzioni["A1"].font = Font(bold=True)

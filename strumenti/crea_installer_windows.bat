@@ -1,15 +1,10 @@
 @echo off
-rem Comm. Claude: crea dist\TASK-Setup.exe (installer di TASK per Windows). Doppio clic su questo file,
+rem crea dist\TASK-Setup.exe (installer di TASK per Windows). Doppio clic su questo file,
 rem oppure da terminale nella cartella del progetto:  strumenti\crea_installer_windows.bat
-rem Serve: Python 3.10+ (solo su QUESTO pc, non su quelli degli utenti), Inno Setup 6, data\circolo_regioni.csv.
+rem Serve: Python 3.10+ (solo su QUESTO pc, non su quelli degli utenti), Inno Setup 6.
 setlocal
 chcp 65001 >nul
 cd /d "%~dp0\.."
-
-if not exist "data\circolo_regioni.csv" (
-  echo ERRORE: manca data\circolo_regioni.csv. Copialo in data\ e rilancia.
-  goto :fine_errore
-)
 
 rem Inno Setup: installazione per tutti o solo per l'utente (winget lo mette in AppData\Local\Programs)
 set "ISCC="

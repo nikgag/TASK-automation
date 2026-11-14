@@ -9,9 +9,6 @@ Flusso:
      sia intero e lo lancia in modalità silenziosa. Poi TASK si chiude da solo:
      l'installer sostituisce i file del programma e al termine riavvia TASK.
 
-#Comm. Claude:  docstring riscritta. Prima il file scaricato (l'installer!) veniva copiato sopra TASK.exe da un .bat
-#Comm. Claude:  in loop senza limite e senza finestra: ora si esegue l'installer, che sa già aggiornare i file (stesso AppId).
-
 Funziona SOLO nell'exe per Windows (conf.CONGELATO = True): da sorgente non serve
 aggiornare, basta fare `git pull`.  In modalità sorgente `controlla()`
 restituisce sempre None.
@@ -23,7 +20,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-#Comm. Claude:  tolto "import textwrap": serviva solo a scrivere i vecchi script .bat/.sh
 import threading
 import time
 import urllib.error
@@ -39,13 +35,13 @@ from core import conf
 _TIMEOUT_SECONDI = 5                          # timeout della richiesta HTTP
 _INTERVALLO_CONTROLLO = 3600                   # secondi tra un controllo e l'altro (1 ora)
 
-#Comm. Claude:  costanti nuove per il download: un limite a ogni attesa, così una rete lenta o un file difettoso
-#Comm. Claude:  producono un errore chiaro (mostrato nella pagina) invece di un'attesa infinita
+# costanti per il download: un limite a ogni attesa, così una rete lenta o un file difettoso
+# producono un errore chiaro (mostrato nella pagina) invece di un'attesa infinita
 _TIMEOUT_DOWNLOAD = 30                         # s senza ricevere dati: oltre, il download fallisce
 _DURATA_MAX_DOWNLOAD = 600                     # s: tetto totale del download (10 minuti)
 _DIMENSIONE_MIN = 10 * 1024 * 1024             # byte: l'installer pesa ~50 MB; sotto i 10 MB è un file sbagliato
-#Comm. Claude:  flag di Windows (valori fissi, definiti qui per non dipendere dal sistema): l'installer parte come
-#Comm. Claude:  processo indipendente e NON si chiude quando TASK termina
+# flag di Windows (valori fissi, definiti qui per non dipendere dal sistema): l'installer parte come
+# processo indipendente e NON si chiude quando TASK termina
 _DETACHED_PROCESS = 0x00000008
 _CREATE_NEW_PROCESS_GROUP = 0x00000200
 _in_aggiornamento = threading.Lock()           # evita due download insieme se si clicca due volte "Aggiorna ora"
@@ -73,8 +69,8 @@ def controlla(forza: bool = False) -> Optional[dict]:
 
     In modalità sorgente (non .exe) restituisce sempre ``None``.
     """
-    #Comm. Claude:  aggiunto sys.platform: la Release contiene solo l'installer Windows, quindi su altri sistemi
-    #Comm. Claude:  il banner mostrerebbe un pulsante "Aggiorna ora" che non può funzionare
+    # sys.platform: la Release contiene solo l'installer Windows, quindi su altri sistemi
+    # il banner mostrerebbe un pulsante "Aggiorna ora" che non può funzionare
     if not conf.CONGELATO or sys.platform != "win32":
         return None
 
@@ -135,7 +131,7 @@ def controlla(forza: bool = False) -> Optional[dict]:
 
 def controlla_in_background() -> None:
     """Lancia il controllo in un thread separato (non blocca l'avvio)."""
-    _pulisci_vecchi_download()   #Comm. Claude:  toglie i residui dell'aggiornamento precedente (cartelle task_update_* in TEMP)
+    _pulisci_vecchi_download()   # toglie i residui dell'aggiornamento precedente (cartelle task_update_* in TEMP)
     threading.Thread(target=controlla, daemon=True, name="aggiorna-check").start()
 
 
@@ -151,8 +147,8 @@ def scarica_e_installa(url_asset: str) -> str:
     Restituisce un messaggio di stato. Se qualcosa va storto solleva RuntimeError con un testo chiaro
     (la rotta /aggiorna di app.py lo mostra nella pagina).
     """
-    #Comm. Claude:  funzione riscritta (vedi docstring del modulo): scarica l'installer con timeout e controlli,
-    #Comm. Claude:  lo esegue in silenzioso e chiude TASK. Nessun .bat, nessun loop: se qualcosa va storto c'è un errore.
+    # scarica l'installer con timeout e controlli,
+    # lo esegue in silenzioso e chiude TASK. Nessun .bat, nessun loop: se qualcosa va storto c'è un errore.
     if not conf.CONGELATO or sys.platform != "win32" or not url_asset:
         return "Aggiornamento automatico disponibile solo nell'exe per Windows."
     # l'indirizzo arriva dall'API di GitHub, ma lo riconfermo: deve essere un allegato di QUESTO repository
@@ -208,7 +204,6 @@ def _trova_asset(assets: list) -> Optional[dict]:
     return assets[0] if assets else None
 
 
-#Comm. Claude:  funzioni nuove (sostituiscono _script_windows/_script_unix, rimossi)
 def _dimensione_attesa(url_asset: str) -> int:
     """Dimensione in byte dell'allegato, come dichiarata da GitHub (0 se non la conosco)."""
     rel = release_disponibile()

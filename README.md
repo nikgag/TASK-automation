@@ -38,10 +38,10 @@ By hand this takes hours and is error-prone. T.A.S.K reduces it to: **upload →
   - upload the FITP ranking PDFs (men + women, merged or separate);
   - they are parsed, validated and replace `coeff_beach.csv` atomically;
   - the previous version is archived.
-- *Clubs*:
-  - clubs change names often, so after each run the clubs missing from `circolo_regioni.csv` are listed;
+- *Clubs* (shared online database, see [Shared clubs database](#shared-clubs-database)):
+  - clubs change names often, so after each run the clubs missing from the shared database are listed;
   - the user downloads an Excel sheet with a province drop-down, fills it and re-uploads it;
-  - the rows are **appended** to the CSV, and the existing rows are never touched.
+  - the rows are **appended** to the shared database (a private Google Sheet) for every user; existing rows are never touched.
 
 **Built for non-technical users**
 - Zero-terminal start: double-click a launcher (macOS / Windows).
@@ -69,6 +69,9 @@ flowchart LR
   M --> X[("Excel workbook<br/>openpyxl")]
   A --> U["processor/data_update.py<br/>coefficients and clubs"]
   U --> DATA[("data/")]
+  M --> CDB["processor/circoli_db.py<br/>shared clubs DB client"]
+  U --> CDB
+  CDB -- "HTTPS + access code" --> GS[("Google Sheet (private)<br/>via Apps Script")]
 ```
 
 ## Project structure
@@ -77,7 +80,8 @@ flowchart LR
 ├── avvia.py                      launcher (stdlib only): venv, dependencies, port, browser
 ├── Start TASK.app                double-click start on macOS (no Terminal window)
 ├── Start TASK.vbs                double-click start on Windows (no console window)
-├── strumenti/                    avvio_mac.sh (macOS launcher source) and crea_app_mac.sh (rebuilds Start TASK.app)
+├── strumenti/                    avvio_mac.sh (macOS launcher source), crea_app_mac.sh (rebuilds Start TASK.app),
+│                                 Windows build (task.spec, task_installer.iss), apps_script/circoli.gs (clubs DB gatekeeper)
 ├── requirements.txt
 ├── codici_errori.csv             error / warning catalogue (cause + what to do)
 ├── core/
@@ -97,7 +101,8 @@ flowchart LR
 │   ├── contatti.py               contacts sheet (WhatsApp message, fees)
 │   ├── live_score.py             Live Score CSV
 │   ├── file_utente.py            robust reading and validation of uploaded Excel files
-│   └── data_update.py            coefficient update from PDFs, club append
+│   ├── data_update.py            coefficient update from PDFs, club append
+│   └── circoli_db.py             client of the shared clubs database (lookup, provinces, append)
 ├── templates/                    Jinja2 pages (home, tennis, beach, championship, progress, download)
 ├── static/                       app.js, style.css
 ├── data/                         reference data (see below)
@@ -107,10 +112,12 @@ flowchart LR
 ## Getting started
 
 ### End users
-Requirements: **Python 3.10+**, **Google Chrome**, an internet connection (for the first start and for the FITP checks).
+Requirements: **Python 3.10+**, **Google Chrome**, an internet connection (for the first start, the FITP checks and the shared clubs database).
 
 - **macOS**: double-click `Start TASK.app`. The first time macOS asks whether *Start TASK* may access the folder (Desktop/Documents/Downloads): click **Allow**. If the app was downloaded as a ZIP, macOS may also block it: right-click → *Open* → *Open* (or System Settings → Privacy & Security → *Open Anyway*).
 - **Windows**: double-click `Start TASK.vbs`.
+
+The first time, open the *Tennis* or *Beach* page and paste the **access code** you received from the maintainer into the *Circoli* card: it is stored once per computer, outside the project folder.
 
 The launcher checks the Python version, creates a `.venv`, and installs the dependencies (again, automatically, when `requirements.txt` changes). If the app is already running, it only reopens the browser; otherwise it starts it on port 5050 (or the next free one). No terminal window is shown: messages go to `avvio.log`, errors appear in a dialog. To quit, close the browser page: the app shuts down a few seconds later (never while an elaboration is running).
 
@@ -132,11 +139,30 @@ TASK_DEBUG=1 python3 core/app.py        # http://127.0.0.1:5050
 
 | File | Content | How it is updated |
 |---|---|---|
-| `circolo_regioni.csv` | club → province → region (`;`-separated) | append from the app (clubs not found in a run) | (not included in this repo for GDPR policy)
 | `coeff_beach.csv` | FITP beach-tennis rankings and coefficients (men + women) | from the FITP ranking PDFs, beach page |
 | `mod_el.xlsx` | Entry List templates (beach singles / doubles) | by hand |
 | `mod_prog.xlsx` | scheduling sheet templates | by hand |
 | `aggiornamenti.json`, `archivio/` | update log and archived previous versions | generated (`archivio/` is not committed) |
+
+Since 2.1.0 the club → province → region list is no longer a local file: it lives in the [shared clubs database](#shared-clubs-database). The Windows installer removes the old `circolo_regioni.csv` (and its archived copies) from every PC on update.
+
+## Shared clubs database
+
+The club → province → region list is FITP data, so it is **not** in this repository and **not** on the users' PCs.
+
+```
+TASK (each PC) ──POST + access code──► Apps Script web app ──► private Google Sheet
+```
+
+- **Google Sheet** (private, visible only to the maintainer): tab `Circoli` (`Circolo | Provincia | Regione | Aggiunto il | Da`) and tab `Utenti` (`Nome | Token | Attivo`).
+- **Gatekeeper**: [`strumenti/apps_script/circoli.gs`](strumenti/apps_script/circoli.gs), deployed as a web app (*execute as: me*, *access: anyone*). It answers only what is asked:
+  `cerca` (the clubs of one tournament), `province` (drop-down list), `stato` (count), `aggiungi` (append-only, re-validated server-side, with a lock and an audit trail of who added each row). There is no read-all and no delete.
+- **Access codes**: one token per user in the `Utenti` tab; untick *Attivo* to revoke one user. The script property `VERSIONE_MINIMA` rejects older TASK versions.
+- **Client**: [`processor/circoli_db.py`](processor/circoli_db.py). The endpoint URL is public (`core/conf.py`, `URL_DB_CIRCOLI`): without a valid token it only returns `Err 61`. The token is stored per computer outside the project folder (`~/Library/Application Support/TASK` on macOS, `%LOCALAPPDATA%\TASK` on Windows), so it can never be committed.
+- **No offline cache**: without internet TASK cannot check memberships anyway, so a run stops immediately with `Err 60`.
+- **Maintenance**: corrections are made by hand in the sheet (the version history is the rollback). To update the script use *Manage deployments → Edit → New version*: a *new* deployment changes the URL and would require a new TASK release.
+
+Error codes `Err 60`–`Err 65` are documented in [`codici_errori.csv`](codici_errori.csv).
 
 ## AI assistance disclosure
 
@@ -191,8 +217,8 @@ The Python figure hides two very different halves:
 - **AI (Claude)**
   - the Flask web layer, templates, CSS and JavaScript;
   - Server-Sent Events progress, the double-click launcher, validation of uploaded files, and the error-code system;
-  - the PDF → CSV coefficient update and the club-append workflow;
-  - bug fixes and refactoring in the author's scripts (each one marked `#Comm. Claude:`);
+  - the PDF → CSV coefficient update, the club-append workflow and the shared clubs database (Apps Script gatekeeper, client, UI);
+  - bug fixes and refactoring in the author's scripts (each one reviewed by the author);
   - end-to-end browser tests (Playwright; not part of this repository).
 
 ## Known limitations and roadmap

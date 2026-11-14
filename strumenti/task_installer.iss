@@ -1,4 +1,4 @@
-﻿; Comm. Claude: ricetta dell'installer (Inno Setup 6). La usa strumenti\crea_installer_windows.bat dopo PyInstaller.
+﻿; ricetta dell'installer (Inno Setup 6). La usa strumenti\crea_installer_windows.bat dopo PyInstaller.
 ; Installa per il solo utente corrente (nessun permesso di amministratore) in AppData\Local\Programs\TASK,
 ; crea le icone nel menu Start e sul desktop e avvia TASK alla fine. I dati dell'utente stanno in
 ; AppData\Local\TASK e NON vengono toccati da aggiornamenti o disinstallazione.
@@ -38,11 +38,15 @@ Source: "..\dist\TASK\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 [InstallDelete]
 ; a ogni aggiornamento tolgo la vecchia cartella _internal: niente librerie vecchie rimaste in giro
 Type: filesandordirs; Name: "{app}\_internal"
+; dalla 2.1.0 i circoli sono nel DB online: tolgo dal PC dell'utente il vecchio elenco (dati FITP riservati)
+; e le sue copie d'archivio. La cartella dati per il resto NON si tocca (coefficienti, modelli, registro).
+Type: files; Name: "{localappdata}\TASK\data\circolo_regioni.csv"
+Type: files; Name: "{localappdata}\TASK\data\archivio\circolo_regioni_*.csv"
 
 [Icons]
 Name: "{autoprograms}\TASK"; Filename: "{app}\TASK.exe"
 Name: "{autodesktop}\TASK"; Filename: "{app}\TASK.exe"
 
 [Run]
-; Comm. Claude: tolto skipifsilent: dopo l'aggiornamento silenzioso lanciato da core/aggiorna.py TASK deve ripartire da solo
+; niente skipifsilent: dopo l'aggiornamento silenzioso lanciato da core/aggiorna.py TASK deve ripartire da solo
 Filename: "{app}\TASK.exe"; Description: "Avvia TASK"; Flags: nowait postinstall

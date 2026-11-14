@@ -7,7 +7,7 @@
       esito       il dict restituito da main.torneo(...)    (facoltativa)
       messaggi    lista delle righe passate a `log`         (facoltativa)
       tema        'tennis' | 'beach' | 'campionato'         (facoltativa, solo per il colore)
-      circoli_mancanti  circoli non ancora in circolo_regioni.csv (None = campionato) -> _circoli.html
+      circoli_mancanti  circoli non ancora nel DB circoli online (None = campionato) -> _circoli.html
     Funzione globale usata:  livello_log(riga) -> 'err' | 'att' | 'info'  (core/lavori.py)
 -#}
 {% from "_icone.html" import icona %}
@@ -33,7 +33,7 @@
   </div>
 </section>
 
-{#- circoli del torneo non trovati in circolo_regioni.csv: file da compilare e ricaricare -#}
+{#- circoli del torneo non trovati nel DB circoli online: file da compilare e ricaricare -#}
 {% if circoli_mancanti is defined and circoli_mancanti is not none and (circoli_mancanti or esito.circoli_mancanti) %}
   {% include "_circoli.html" %}
 {% endif %}

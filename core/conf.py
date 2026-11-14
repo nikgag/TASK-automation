@@ -7,7 +7,7 @@ CD_DIR = Path.home()
 # percorsi assoluti dalla cartella del progetto: funzionano da qualsiasi cartella si lanci python
 BASE_DIR = Path(__file__).resolve().parent.parent
 VERSIONE = "2.0.4"
-GITHUB_REPO = "nikgag/TASK-automation"       # owner/repo per il sistema di aggiornamento
+GITHUB_REPO = "nikgag/TASK-automation"       
 
 CONGELATO = getattr(sys, "frozen", False)             # True dentro l'exe
 if CONGELATO:
@@ -37,22 +37,32 @@ CODICI_ERRORI = RISORSE_DIR / "codici_errori.csv"
 PORTA_GUI = 5050
 
 # DataBase FITP
-DB_CLUBS = DB_DIR / "circolo_regioni.csv"
+# configurazione del DB circoli online (codice di accesso): SEMPRE fuori dalla cartella del
+# progetto, anche senza exe, così non può finire nel repo pubblico.
+_CONFIG_DIR = (Path(os.environ["LOCALAPPDATA"]) / "TASK" if sys.platform == "win32"
+               else Path.home() / "Library" / "Application Support" / "TASK" if sys.platform == "darwin"
+               else Path.home() / ".local" / "share" / "TASK")
+CONFIG_DB_CIRCOLI = _CONFIG_DIR / "db_circoli.json"
+# indirizzo del portinaio (strumenti/apps_script/circoli.gs). Pubblico di proposito: senza un codice
+# di accesso valido risponde solo Err 61. Per aggiornare lo script usare "Gestisci deployment ->
+# Modifica -> Nuova versione": un deployment NUOVO cambia l'indirizzo e servirebbe una nuova versione di TASK.
+URL_DB_CIRCOLI = "https://script.google.com/macros/s/AKfycbwzavhk4TRMvR-M1KEu8f_FfzH9djekxR3G1fXtgYpVIdgrKuGZ-rYmImJNSYkWB860EQ/exec"
 DB_COEF_BT = DB_DIR / "coeff_beach.csv"
 ENTRY_BT = DB_DIR / "mod_el.xlsx"
-# antigrav – added constant for CS Excel template
+
+
 MODELLO_CS = DB_DIR / "mod_cs.xlsx"
 PROGRAMMAZIONE = DB_DIR / "mod_prog.xlsx"
 
-# data/archivio: copia della versione precedente prima di ogni aggiornamento; registro: quando e da cosa
+
 ARCHIVIO_DIR = DB_DIR / "archivio"
 REGISTRO_AGGIORNAMENTI = DB_DIR / "aggiornamenti.json"
 MESI_VALIDITA_COEFF_BT = 6
 
 # file di data/ indispensabili per sezione: le pagine avvisano all'apertura se ne manca uno
 FILE_NECESSARI = {
-    "tennis": (DB_CLUBS,),
-    "beach": (DB_CLUBS, DB_COEF_BT, ENTRY_BT),
+    "tennis": (),
+    "beach": (DB_COEF_BT, ENTRY_BT),
     "campionato": (),
 }
 

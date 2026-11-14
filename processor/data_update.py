@@ -28,10 +28,10 @@ Come si evitano i disastri:
   - la versione precedente viene copiata in data/archivio/ e il file nuovo sostituisce il
     vecchio in un colpo solo (os.replace): chi lo sta leggendo vede o il vecchio o il nuovo.
 
-CIRCOLI (data/circolo_regioni.csv): si AGGIUNGONO righe in fondo, non si sostituisce il file.
-  province_circoli()          provincia -> regione come scritte nel csv (per la tendina del modulo)
-  aggiungi_circoli(xlsx)      append dei circoli compilati nel file "circoli da mappare"
-  circoli_non_presenti(nomi)  quelli dell'elenco non ancora nel csv (pagina finale)
+CIRCOLI (DB online, processor/circoli_db.py): si AGGIUNGONO righe in fondo al foglio Google, mai sostituite.
+  province_circoli()          provincia -> regione come scritte nel DB (per la tendina del modulo)
+  aggiungi_circoli(xlsx)      invio al DB dei circoli compilati nel file "circoli da mappare"
+  circoli_non_presenti(nomi)  quelli dell'elenco non ancora nel DB (pagina finale)
   stato_circoli()             cosa mostrare nella scheda Circoli (tennis / beach)
 
 Le liste dei campionati si leggono in processor/campionato.py (dato della singola partita, non di riferimento).
@@ -41,8 +41,6 @@ e _registra().
 from __future__ import annotations
 
 import contextlib
-import csv
-import io
 import hashlib
 import json
 import os
@@ -55,8 +53,9 @@ import pandas as pd
 import pdfplumber
 
 from core import conf
-from core.errori import ErroreUtente
+from core.errori import ErroreUtente, cosa_fare
 from processor import file_utente as _fu
+from processor import circoli_db as _db
 
 # Colonne del CSV prodotto: le prime sei sono quelle che leggono players.df_coeff e
 # ranking.ass_coeff (NON rinominarle). "Sesso" è nuova e serve solo per i conteggi.
@@ -292,112 +291,67 @@ def stato_coeff_beach() -> dict:
 
 
 # =============================================================================
-# Circoli (data/circolo_regioni.csv)
+# Circoli: DB online (processor/circoli_db.py)
 # =============================================================================
 def _chiave_provincia(testo) -> str:
     """'bolzano ' / 'Bolzano/Bozen' -> 'bolzano' ; 'Forlì-Cesena' -> 'forli-cesena' (per il confronto)."""
     return _fu._norm(str(testo).split("/")[0])
 
 
-def _leggi_circoli() -> pd.DataFrame:
-    """Il csv dei circoli così com'è (stessa lettura di players.mappa_clubs). Err 08 se manca."""
-    if not conf.DB_CLUBS.is_file():
-        raise FileNotFoundError(f"Err 08: DB circoli non trovato: {conf.DB_CLUBS}")
-    return pd.read_csv(conf.DB_CLUBS, delimiter=";", dtype=str).fillna("")
-
-
 def province_circoli() -> dict[str, str]:
-    """Provincia -> regione, prese dal csv dei circoli (sono i nomi che il programma sa già usare)."""
-    df = _leggi_circoli()
-    df = df[df["Provincia"].str.strip() != ""]
-    return {p.strip(): r.strip() for p, r in zip(df["Provincia"], df["Regione"])}
+    """Provincia -> regione come scritte nel DB circoli (per la tendina del modulo)."""
+    return _db.province()
 
 
 def aggiungi_circoli(percorso, log=None) -> dict:
-    """Aggiunge in fondo a circolo_regioni.csv i circoli compilati nel file "circoli da mappare".
+    """Invia al DB circoli i circoli compilati nel file "circoli da mappare".
 
-    Tutti i controlli vengono fatti PRIMA di scrivere: se una provincia non è riconosciuta non si
-    aggiunge niente (Err 49)."""
+    I controlli si fanno qui PRIMA di inviare (risposta chiara e immediata) e il portinaio li rifà prima
+    di scrivere: se una provincia non è riconosciuta non si aggiunge niente (Err 49)."""
     log = log or _log
     nome_file = Path(percorso).name
-    esistenti = _leggi_circoli()
-    chiavi = set(esistenti["Circolo"].str.strip().str.upper())      # stessa chiave di mappa_clubs
-    province = province_circoli()
-    per_chiave = {_chiave_provincia(p): p for p in province}
-
     df = _fu.leggi_circoli_compilati(percorso)
     compilati = df[df["Provincia"] != ""]
     senza_provincia = len(df) - len(compilati)
     if compilati.empty:
         raise ErroreUtente(f"Err 51: in «{nome_file}» non c'è nessuna provincia compilata: non c'è niente da aggiungere.")
 
+    province = province_circoli()
+    per_chiave = {_chiave_provincia(p): p for p in province}
     sconosciute = [f"«{r.Circolo}»: «{r.Provincia}»" for r in compilati.itertuples()
                    if _chiave_provincia(r.Provincia) not in per_chiave]
     if sconosciute:
         raise ErroreUtente(f"Err 49: in «{nome_file}» ci sono province non riconosciute, nessun circolo aggiunto: "
                            + "; ".join(sconosciute[:5]) + (f" e altre {len(sconosciute) - 5}" if len(sconosciute) > 5 else ""))
 
-    nuovi, gia_presenti = [], []
-    for r in compilati.itertuples():
-        chiave = r.Circolo.upper()
-        if chiave in chiavi:
-            gia_presenti.append(r.Circolo)
-            continue
-        chiavi.add(chiave)                                          # (anche i ripetuti nel file)
-        provincia = per_chiave[_chiave_provincia(r.Provincia)]
-        nuovi.append((r.Circolo, provincia, province[provincia]))
+    # la provincia si manda scritta esattamente come nel DB (quella della tendina)
+    risposta = _db.aggiungi([(r.Circolo, per_chiave[_chiave_provincia(r.Provincia)]) for r in compilati.itertuples()])
+    nuovi = [tuple(n) for n in risposta["aggiunti"]]
+    gia_presenti = risposta["gia_presenti"]
     if gia_presenti:
-        log(f"Att. 50: {len(gia_presenti)} circoli già presenti in {conf.DB_CLUBS.name} (o ripetuti nel file), "
+        log(f"Att. 50: {len(gia_presenti)} circoli già presenti nel DB circoli (o ripetuti nel file), "
             f"non aggiunti di nuovo: {', '.join(gia_presenti)}")
-
-    esito = {"file": conf.DB_CLUBS.name, "aggiunti": nuovi, "gia_presenti": gia_presenti,
-             "senza_provincia": senza_provincia, "archiviato": None}
-    if not nuovi:
-        return esito
-
-    # append: il vecchio contenuto resta byte per byte, le righe nuove vanno in fondo con lo stesso a capo
-    vecchio = conf.DB_CLUBS.read_bytes()
-    a_capo = "\r\n" if b"\r\n" in vecchio else "\n"
-    righe = io.StringIO()
-    csv.writer(righe, delimiter=";", lineterminator=a_capo).writerows(nuovi)
-    contenuto = vecchio + (b"" if vecchio.endswith(b"\n") else a_capo.encode()) + righe.getvalue().encode("utf-8")
-
-    esito["archiviato"] = _archivia(conf.DB_CLUBS, log)
-    temporaneo = conf.DB_CLUBS.with_suffix(".tmp")
-    temporaneo.write_bytes(contenuto)
-    os.replace(temporaneo, conf.DB_CLUBS)
-
-    # verifica: rilettura come la fa players.mappa_clubs (se non torna è un errore del programma)
-    riletto = _leggi_circoli()
-    if len(riletto) != len(esistenti) + len(nuovi):
-        raise RuntimeError(f"{conf.DB_CLUBS.name}: attese {len(esistenti) + len(nuovi)} righe dopo l'aggiunta, "
-                           f"lette {len(riletto)}. La versione precedente è in data/archivio/{esito['archiviato']}.")
-
-    _registra("circoli", {"aggiornato_il": datetime.now().isoformat(timespec="seconds"), "da_file": nome_file,
-                          "aggiunti": len(nuovi), "totale": len(riletto), "archiviato": esito["archiviato"]})
     for circolo, provincia, regione in nuovi:
         log(f"Aggiunto: {circolo} · {provincia} · {regione}")
-    return esito
+    return {"file": "DB circoli", "aggiunti": nuovi, "gia_presenti": gia_presenti,
+            "senza_provincia": senza_provincia, "totale": risposta["totale"]}
 
 
 def circoli_non_presenti(nomi: list[str]) -> list[str]:
-    """I circoli dell'elenco che (ancora) non sono nel csv: dopo un'aggiunta la pagina finale si aggiorna."""
-    chiavi = set(_leggi_circoli()["Circolo"].str.strip().str.upper())
-    return [n for n in nomi if n.strip().upper() not in chiavi]
+    """I circoli dell'elenco che (ancora) non sono nel DB: dopo un'aggiunta la pagina finale si aggiorna."""
+    trovati = _db.cerca(nomi)
+    return [n for n in nomi if n.strip().upper() not in trovati]
 
 
 def stato_circoli() -> dict:
-    """Cosa mostrare nella scheda Circoli: quanti sono e quando è stata fatta l'ultima aggiunta."""
-    percorso = conf.DB_CLUBS
-    stato = {"presente": percorso.is_file(), "file": percorso.name}
-    if not stato["presente"]:
-        return stato
-    voce = _leggi_registro().get("circoli", {})
-    stato.update({
-        "circoli": len(_leggi_circoli()),
-        "aggiornato": datetime.fromisoformat(voce["aggiornato_il"]) if voce
-                      else datetime.fromtimestamp(percorso.stat().st_mtime),
-        "ultima_aggiunta": voce.get("aggiunti"),
-    })
-    return stato
+    """Cosa mostrare nella scheda Circoli: collegamento, quanti circoli, ultima aggiunta.
 
+    Un errore del DB (rete, codice) NON nasconde la pagina: compare in rosso nella scheda, con il rimedio.
+    L'elaborazione poi si ferma comunque con lo stesso errore appena parte."""
+    if not _db.collegato():
+        return {"collegato": False}
+    try:
+        s = _db.stato()
+    except ErroreUtente as e:
+        return {"collegato": True, "errore": str(e), "rimedio": cosa_fare(e)}
+    return {"collegato": True, "circoli": s["totale"], "ultima_aggiunta": s.get("ultima_aggiunta") or ""}

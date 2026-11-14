@@ -1,13 +1,18 @@
-{#- Scheda "Circoli" condivisa. La chiave è il NOME DEL CIRCOLO in data/circolo_regioni.csv:
+{#- Scheda "Circoli" condivisa. La chiave è il NOME DEL CIRCOLO nel DB circoli online (processor/circoli_db.py):
     i circoli che non ci sono si scaricano in un Excel, si sceglie la provincia e lo si ricarica qui
-    -> le righe vengono aggiunte in fondo al csv (rotta aggiungi_circoli -> data_update.aggiungi_circoli).
+    -> vengono aggiunti in fondo al foglio Google (rotta aggiungi_circoli -> data_update.aggiungi_circoli).
 
     Due usi:
-      download.html      circoli_mancanti = lista dei circoli del torneo non ancora nel csv, id_lavoro
-      tennis/beach.html  circoli = data_update.stato_circoli()  (quanti sono, ultima aggiunta)
+      download.html      circoli_mancanti = lista dei circoli del torneo non ancora nel DB, id_lavoro
+      tennis/beach.html  circoli = data_update.stato_circoli():
+                           {collegato: False}                      -> riquadro per collegare il DB
+                           {collegato: True, errore, rimedio}       -> errore in rosso + riquadro per ricollegare
+                           {collegato: True, circoli, ultima_aggiunta}
 -#}
 {% from "_icone.html" import icona %}
 {% set pagina_finale = circoli_mancanti is defined and circoli_mancanti is not none %}
+{% set non_collegato = not pagina_finale and circoli is defined and not circoli.collegato %}
+{% set con_errore = not pagina_finale and circoli is defined and circoli.errore is defined %}
 
 <section class="card scheda-dati" id="circoli">
   <div class="scheda-dati-testa">
@@ -15,14 +20,16 @@
     {% if pagina_finale %}
       {% if circoli_mancanti %}<span class="chip att">{{ circoli_mancanti | length }} da mappare</span>
       {% else %}<span class="chip ok">Aggiunti</span>{% endif %}
-    {% elif circoli is defined and circoli.presente %}<span class="chip ok">{{ circoli.circoli | migliaia }} circoli</span>
-    {% else %}<span class="chip err">Mancante</span>{% endif %}
+    {% elif non_collegato %}<span class="chip err">Non collegato</span>
+    {% elif con_errore %}<span class="chip err">Errore</span>
+    {% elif circoli is defined %}<span class="chip ok">{{ circoli.circoli | migliaia }} circoli</span>
+    {% endif %}
   </div>
 
   {% if pagina_finale %}
     {% if circoli_mancanti %}
       <p class="aiuto">
-        Questi circoli non sono in data/circolo_regioni.csv: nel foglio Giocatori hanno regione ND.
+        Questi circoli non sono nel DB circoli: nel foglio Giocatori hanno regione ND.
         <strong>Vuoi aggiungerli?</strong> Scarica il file, scegli la provincia di ogni circolo dal menu a
         tendina (lascia vuoti quelli da non aggiungere) e ricaricalo qui sotto.
       </p>
@@ -33,26 +40,42 @@
         <a class="btn btn-secondario" href="{{ url_for('circoli_da_mappare', id_lavoro=id_lavoro) }}">{{ icona('giu') }} Scarica i circoli da mappare</a>
       </div>
     {% else %}
-      <p class="aiuto">I circoli mancanti ora sono nel file: rilancia l'elaborazione per avere provincia e regione nel foglio Giocatori.</p>
+      <p class="aiuto">I circoli mancanti ora sono nel DB circoli: rilancia l'elaborazione per avere provincia e regione nel foglio Giocatori.</p>
     {% endif %}
-  {% elif circoli is defined and circoli.presente %}
+  {% elif non_collegato or con_errore %}
+    {% if con_errore %}
+      <p class="aiuto"><strong>{{ circoli.errore }}</strong>{% if circoli.rimedio %}<br>{{ circoli.rimedio }}{% endif %}</p>
+    {% else %}
+      <p class="aiuto">TASK non è ancora collegato al DB circoli. Incolla il codice di accesso che ti ha dato
+        chi gestisce TASK: si inserisce una volta sola su questo computer.</p>
+    {% endif %}
+    <details class="aggiorna-dati" {{ 'open' if non_collegato }}>
+      <summary>{{ 'Collega il DB circoli' if non_collegato else 'Ricollega il DB circoli (codice nuovo)' }}</summary>
+      <form class="form-guidato" method="post" action="{{ url_for('collega_db_circoli') }}" data-attesa="Provo il collegamento…">
+        <div class="campo" data-etichetta="Codice di accesso">
+          <input type="password" name="token" required autocomplete="off">
+        </div>
+        <div class="invio">
+          <button type="submit" class="btn btn-primario">Collega {{ icona('freccia') }}</button>
+          <p class="mancanti" aria-live="polite"></p>
+        </div>
+      </form>
+    </details>
+  {% elif circoli is defined %}
     <div class="riepilogo">
-      <div><p class="dato-etichetta">File</p><p class="dato-valore">{{ circoli.file }}</p></div>
-      <div><p class="dato-etichetta">Ultimo aggiornamento</p><p class="dato-valore">{{ circoli.aggiornato.strftime('%d/%m/%Y') }}</p></div>
+      <div><p class="dato-etichetta">Archivio</p><p class="dato-valore">DB circoli online</p></div>
       {% if circoli.ultima_aggiunta %}
-        <div><p class="dato-etichetta">Ultima aggiunta</p><p class="dato-valore">{{ circoli.ultima_aggiunta }} circoli</p></div>
+        <div><p class="dato-etichetta">Ultima aggiunta</p><p class="dato-valore">{{ circoli.ultima_aggiunta }}</p></div>
       {% endif %}
     </div>
     <p class="aiuto">I circoli non trovati durante un torneo si scaricano dalla pagina finale dell'elaborazione.</p>
-  {% else %}
-    <p class="aiuto">Manca data/{{ circoli.file if circoli is defined else 'circolo_regioni.csv' }}: rimettilo nella cartella data/ (una copia può essere in data/archivio/).</p>
   {% endif %}
 
-  {% if circoli_mancanti or (not pagina_finale and circoli is defined and circoli.presente) %}
+  {% if circoli_mancanti or (not pagina_finale and circoli is defined and circoli.circoli is defined) %}
   <details class="aggiorna-dati" {{ 'open' if pagina_finale }}>
     <summary>Carica il file dei circoli compilato</summary>
     <form class="form-guidato" method="post" action="{{ url_for('aggiungi_circoli') }}" enctype="multipart/form-data"
-          data-attesa="Aggiungo i circoli al file…">
+          data-attesa="Aggiungo i circoli al DB…">
       <div class="campo" data-etichetta="File dei circoli compilato">
         <label class="dropzone">
           <input type="file" name="file_circoli" accept=".xlsx" required>
