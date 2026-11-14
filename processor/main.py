@@ -29,6 +29,7 @@ from processor import live_score as _ls
 from processor import contatti as _contatti
 from processor import campionato as _cs
 from processor import file_utente as _fu
+from processor import circoli_db as _db
 
 
 __version__ = "1.1.0"
@@ -46,7 +47,7 @@ class TypeTorneo:
     # oggetti obbligari
     file_iscritti: str
     file_output: str
-    csv_circoli: str = str(conf.DB_CLUBS)
+    #csv_circoli: str = str(conf.DB_CLUBS)
     sport: str = "tennis"                 # scolta utente 'tennis' | 'beach'
     
     #disciplina 
@@ -150,9 +151,13 @@ def torneo(opz: TypeTorneo, driver=None, log=None, avanzamento=None) -> dict:
 
         df_in = _fu.leggi_iscritti(opz.file_iscritti, doppio=opz.doppio, log=log)
 
-        if not Path(opz.csv_circoli).is_file():
-            raise FileNotFoundError(f"Err 08: DB circoli non trovato: {opz.csv_circoli}")
-        circoli = _pl.mappa_clubs(opz.csv_circoli)
+        #if not Path(opz.csv_circoli).is_file():
+            #raise FileNotFoundError(f"Err 08: DB circoli non trovato: {opz.csv_circoli}")
+    
+        nomi_clubs = [c for c in df_in['Circolo'] if not pd.isna(c)]
+        
+        #circoli = _pl.mappa_clubs(opz.csv_circoli)
+        circoli = _pl.mappa_clubs(_db.cerca(nomi_clubs))
 
         if opz.sport == "beach" and not Path(conf.ENTRY_BT).is_file():
             raise FileNotFoundError(f"Err 09: modello Entry List non trovato: {conf.ENTRY_BT}")
@@ -166,7 +171,7 @@ def torneo(opz: TypeTorneo, driver=None, log=None, avanzamento=None) -> dict:
         esito['circoli_mancanti'] = sorted({p.club.strip() for p in ply
                                             if p.club and p.club.strip().upper() not in circoli})
         if esito['circoli_mancanti']:
-            log(f"{len(esito['circoli_mancanti'])} circoli non trovati in {Path(opz.csv_circoli).name}: "
+            log(f"{len(esito['circoli_mancanti'])} circoli non trovati nel DataBase circoli: "
                 f"a fine elaborazione puoi scaricarli, scegliere la provincia e aggiungerli al file.")
         
         ws_ply = wb.active

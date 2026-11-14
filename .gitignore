@@ -1,6 +1,6 @@
 # Ambiente Python e cache
 .venv/
-# Comm. Claude: build dell'exe (strumenti/crea_installer_windows.bat)
+# build dell'exe (strumenti/crea_installer_windows.bat)
 .venv-build/
 build/
 dist/
@@ -12,7 +12,7 @@ output/
 upload/
 da_fare.txt
 *.tmp
-# Comm. Claude: registro degli avvii senza terminale (avvio.log e avvio.log.old)
+# registro degli avvii senza terminale (avvio.log e avvio.log.old)
 avvio.log*
 
 # Dati FITP riservati: restano solo sul computer di chi usa l'app

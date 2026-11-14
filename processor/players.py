@@ -95,32 +95,28 @@ def _log(*_args, **_kwargs):
 # =============================================================================
 #mappa circolo - regione
 # chiave = nome del circolo (maiuscolo); la regione è quella del circolo, non la residenza del giocatore
-def mappa_clubs(csv) -> dict[str, tuple[str,str]]:
- 
-    df = pd.read_csv(csv, delimiter=';')
-    mappa: dict[str, tuple[str,str]] = {}
- 
-    for _, line in df.iterrows():
-        circolo = str(line["Circolo"]).strip().upper()
-        regione = str(line["Regione"]).strip()
-        provincia = str(line["Provincia"]).strip()
- 
-        if regione == "Trentino-Alto Adige/Südtirol":
-            if provincia == "Trento":
-                regione = "Trento"
-            elif provincia == "Bolzano/Bozen":
-                regione = "Bolzano"
-        elif regione == "Valle d'Aosta/Vallée d'Aoste":
-            regione = "VDA"
-        # nel csv queste regioni sono scritte col trattino
-        elif regione in ("Friuli Venezia Giulia", "Friuli-Venezia Giulia"):
-            regione = "Friuli"
-        elif regione in ("Emilia Romagna", "Emilia-Romagna"):
-            regione = "Emilia"
- 
-        mappa[circolo] = (provincia, regione)
+def regione(prov: str, reg: str) -> str:
+    if reg == "Trentino-Alto Adige/Südtirol":
+        if prov == "Trento":
+            reg = "Trento"
+        elif prov == "Bolzano/Bozen":
+            reg = "Bolzano"
+    elif reg == "Valle d'Aosta/Vallée d'Aoste":
+        reg = "VDA"
+    elif reg in ("Friuli Venezia Giulia", "Friuli-Venezia Giulia"):
+        reg = "Friuli"
+    elif reg in ("Emilia Romagna", "Emilia-Romagna"):
+        reg = "Emilia"
+    return reg 
+
+def mappa_clubs(find: dict[str, tuple[str,str]]) -> dict[str, tuple[str,str]]: 
+    mappa: dict[str, tuple[str,str]] ={}
+    
+    for club, (prov,reg) in find.items():
+        prov, reg = str(prov).strip(), str(reg).strip()
+        mappa[str(club).strip().upper()] = (prov, regione(prov,reg))
     return mappa
- 
+    
 #controllo su equiparati, toglie le righe
 def _rimuovi_equiparati(df: pd.DataFrame, log) -> pd.DataFrame:
     if "Nome" not in df.columns:
@@ -175,7 +171,7 @@ def player_list(df_ply: pd.DataFrame, mappa_clubs: dict[str, tuple[str,str]], da
             prov, reg = UNKOWN_PROV, UNKOWN_REG
             if club_key not in circoli_ignoti:
                 circoli_ignoti.add(club_key)
-                log(f"Att. 01: circolo «{club_key}» non trovato in {conf.DB_CLUBS.name}: regione ND.")
+                log(f"Att. 01: circolo «{club_key}» non trovato nel DataBase circoli: regione ND.")
  
  
         med = nat = None

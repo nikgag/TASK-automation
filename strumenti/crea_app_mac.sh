@@ -1,5 +1,5 @@
 #!/bin/bash
-# Comm. Claude: ricrea "Start TASK.app" (solo su Mac, per lo sviluppatore). Da rilanciare dopo aver
+# ricrea "Start TASK.app" (solo su Mac, per lo sviluppatore). Da rilanciare dopo aver
 # modificato strumenti/avvio_mac.sh, poi fai commit dell'app.
 # L'app è un'applet AppleScript (osacompile) firmata ad-hoc: così macOS mostra la richiesta di accesso
 # alla Scrivania/Documenti invece di negarla in silenzio come fa con uno script non firmato.

@@ -38,6 +38,7 @@ from core.errori import ErroreUtente, codici_non_documentati, cosa_fare
 from core import aggiorna
 from processor import campionato as _cs
 from processor import data_update
+from processor import circoli_db
 from processor import file_utente as _fu
 from processor import main as _main
 
@@ -387,20 +388,20 @@ def circoli_da_mappare(id_lavoro):
         abort(404, "Nessun circolo da mappare: il programma è stato riavviato?")
     ancora = data_update.circoli_non_presenti(lavoro.esito["circoli_mancanti"])   # tolti quelli già aggiunti
     if not ancora:
-        abort(404, "I circoli di questa elaborazione sono già tutti nel file dei circoli.")
+        abort(404, "I circoli di questa elaborazione sono già tutti nel DB circoli.")
     contenuto = _fu.modulo_circoli(ancora, data_update.province_circoli())
     return send_file(io.BytesIO(contenuto), as_attachment=True,
                      download_name=f"circoli_da_mappare_{datetime.now():%Y%m%d_%H%M}.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
-# File dei circoli compilato: righe aggiunte in fondo a circolo_regioni.csv, poi si torna alla pagina.
+# File dei circoli compilato: righe aggiunte in fondo al DB circoli online, poi si torna alla pagina.
 # coll: data_update.aggiungi_circoli -> file_utente.leggi_circoli_compilati | html: _circoli.html (download, tennis, beach)
 @app.route("/circoli/aggiungi", methods=["POST"])
 def aggiungi_circoli():
     compilato = _salva(request.files["file_circoli"], _nuova_cartella(), (".xlsx",))
     avvisi: list[str] = []
-    esito = data_update.aggiungi_circoli(compilato, log=avvisi.append)   # Err 30/48/49/51 -> ErroreUtente
+    esito = data_update.aggiungi_circoli(compilato, log=avvisi.append)   # Err 30/48/49/51, 60-65 -> ErroreUtente
     for riga in avvisi:
         if riga.startswith("Att."):
             flash({"testo": riga, "rimedio": cosa_fare(riga)}, "warning")
@@ -414,6 +415,15 @@ def aggiungi_circoli():
     if vuoti:
         flash("1 circolo lasciato senza provincia: non aggiunto." if vuoti == 1
               else f"{vuoti} circoli lasciati senza provincia: non aggiunti.", "message")
+    return redirect(request.referrer or url_for("index"))
+
+
+# Collega TASK al DB circoli: prova il codice di accesso, poi lo salva.
+# coll: circoli_db.collega -> circoli_db.salva_config | html: _circoli.html (tennis, beach)
+@app.route("/circoli/collega", methods=["POST"])
+def collega_db_circoli():
+    stato = circoli_db.collega(request.form.get("token", ""))   # Err 60-65 -> ErroreUtente
+    flash(f"DB circoli collegato: {stato['totale']} circoli.", "success")
     return redirect(request.referrer or url_for("index"))
 
 

@@ -1,4 +1,4 @@
-# Comm. Claude: fine riga fisse per i lanciatori: CRLF per lo script Windows, LF per quello Mac
+# fine riga fisse per i lanciatori: CRLF per lo script Windows, LF per quello Mac
 *.vbs text eol=crlf
 *.bat text eol=crlf
 *.iss text eol=crlf

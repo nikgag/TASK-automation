@@ -152,8 +152,6 @@ def dati_squadra(righe: list[list[str]], i: int, ospite: bool = False) -> list[s
     for offset in (1,2):
         if i - offset < 0 :
             break
-        #Comm. Claude: nei PDF A1 la riga squadra ha una cella in piu' ("Ordine di schieramento"):
-        #7 celle piene invece di 6, quindi il vecchio controllo non scattava mai. La escludo.
         piene = [c.strip() for c in righe[i - offset]
                  if c and c.strip() and c.strip().lower() not in
                     {"ordine di schieramento", "schieramento"}]
@@ -236,8 +234,6 @@ def leggi_lista(pdf, log=None) -> list[Lista]:
                 mappa = new # ?? 
             
             team = dati_squadra(righe, i)
-            #Comm. Claude: prima, se la riga squadra non si trovava, restava la squadra
-            #PRECEDENTE senza errori. Ora si ferma subito.
             if not team:
                 raise ValueError(f"{info_file.nome_file}: riga squadra non trovata sopra "
                                  f"l'intestazione giocatori (riga {i}): {righe[max(i-2,0):i]}")
@@ -349,28 +345,24 @@ def corrispondenza(player, lista) -> tuple:
         flag = "Non in Lista"
         return corr, flag
 
-    #Comm. Claude:  un blocco per campo, ognuno con la sua regola (prima tutti i campi avevano la stessa condizione)
+    
     diversi = []
 
-    #Comm. Claude:  rank_sgat: fonte meno importante, si confronta solo se la lista ha il valore
     r_sgat = pulisci(player.rank)
     r_lista = pulisci(lista.rank_ita)
     if r_lista and r_lista != r_sgat:
         diversi.append("rank_sgat")
-
-    #Comm. Claude:  rank_tess: deve coincidere con la lista; manca da una parte sola = NO
+        
     r_tess = pulisci(player.rank_tess)
     if r_lista != r_tess:
         diversi.append("rank_tess" if r_lista and r_tess
                        else f"rank_tess: manca in {'lista' if not r_lista else 'tessera'}")
 
-    #Comm. Claude:  nat: campo sempre presente, deve coincidere tra lista e tessera
     nat_l, nat_t = pulisci(lista.nat), pulisci(player.nat)
     if nat_l != nat_t:
         diversi.append("nat" if nat_l and nat_t
                        else f"nat: manca in {'lista' if not nat_l else 'tessera'}")
 
-    #Comm. Claude:  viv: la tessera dà sempre Sì o No; la lista ha Sì se è vivaio e vuoto se non lo è (vuoto + No = OK)
     viv_l, viv_t = pulisci(lista.vivaio), pulisci(player.vivaio)
     if viv_t not in ("SI", "NO"):
         diversi.append(f"viv: tessera non leggibile ({player.vivaio})")
@@ -381,7 +373,6 @@ def corrispondenza(player, lista) -> tuple:
     elif viv_t == "NO" and viv_l == "SI":
         diversi.append("viv: in lista ma non in tessera")
 
-    #Comm. Claude:  var: la tessera dà N, S, T oppure "-" (non variato); la lista è vuota se non variato. La lettera deve coincidere
     def lettera(x):
         s = pulisci(x)
         return "" if s == "-" else s      # "-" e vuoto = non variato
@@ -505,7 +496,6 @@ def foglio_cs(ws, lista: list[Lista], sgat_file: str, squadra_casa: str, data: s
         ws.cell(row=riga_idx, column=4, value=p.tessera)
         ws.cell(row=riga_idx, column=5, value=p.rank_tess or g.rank_ita or p.rank or "—")
         ws.cell(row=riga_idx, column=6, value=p.variato if p.variato in ("T", "N", "S") else (g.variato if g.variato in ("T", "N", "S") else "—"))
-        #Comm. Claude:  g.vivaio == "SI" -> _viv_lista(g) (vedi sopra)
         ws.cell(row=riga_idx, column=7, value="Sì" if (p.vivaio == "SI" or _viv_lista(g)) else "No")
         ws.cell(row=riga_idx, column=8, value=p.nat or g.nat or "—")
         ws.cell(row=riga_idx, column=9, value=p.med or "Valido")
@@ -524,7 +514,6 @@ def foglio_cs(ws, lista: list[Lista], sgat_file: str, squadra_casa: str, data: s
         ws.cell(row=riga_idx, column=16, value=p.rank_tess or "—")
         ws.cell(row=riga_idx, column=17, value=g.variato if g.variato in ("T", "N", "S") else "—")
         ws.cell(row=riga_idx, column=18, value=p.variato if p.variato in ("T", "N", "S") else "—")
-        #Comm. Claude:  stesso motivo: colonna "Viv. Lista" sempre "—" anche con vivaio in lista
         ws.cell(row=riga_idx, column=19, value="Sì" if _viv_lista(g) else "—")
         ws.cell(row=riga_idx, column=20, value="Sì" if p.vivaio == "SI" else ("No" if p.vivaio == "NO" else "NON LETTO"))
         ws.cell(row=riga_idx, column=21, value=g.nat or "—")
@@ -561,7 +550,6 @@ def foglio_stampa(ws, lista_casa: list[Lista], giocatori_casa: list[ply.Player],
             g = trova_in_lista(p, lista_pdf) or Lista()
 
             # Rilevamento figure/status per colorazione
-            #Comm. Claude:  stesso motivo: se la tessera non e' letta, il vivaio di lista deve comunque colorare il foglio stampa
             is_viv = (p.vivaio == "SI") or _viv_lista(g)
             is_var = (p.variato in ("T", "N", "S")) or (g.variato in ("T", "N", "S"))
             nat = (p.nat or g.nat or "").strip().upper()
