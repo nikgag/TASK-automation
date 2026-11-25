@@ -1,3 +1,9 @@
+## v2.2.0 (2026-11-25)
+
+### Feat
+
+- codice di accesso con popup e controllo all'avvio, contatore in sottofondo, tentativi verso Google, quote FIT nel modulo, pulizia dei file temporanei
+
 ## v2.1.0 (2026-11-14)
 
 ### Feat
