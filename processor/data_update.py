@@ -53,7 +53,7 @@ import pandas as pd
 import pdfplumber
 
 from core import conf
-from core.errori import ErroreUtente, cosa_fare
+from core.errori import ErroreUtente
 from processor import file_utente as _fu
 from processor import circoli_db as _db
 
@@ -343,15 +343,9 @@ def circoli_non_presenti(nomi: list[str]) -> list[str]:
     return [n for n in nomi if n.strip().upper() not in trovati]
 
 
+# niente rete all'apertura delle pagine: se il portinaio è lento la pagina si bloccava fino
+# a 30 s (Err 60 "timed out"). Codice valido, revoca e versione si controllano quando
+# un'elaborazione PARTE (circoli_db.registra_uso).
 def stato_circoli() -> dict:
-    """Cosa mostrare nella scheda Circoli: collegamento, quanti circoli, ultima aggiunta.
-
-    Un errore del DB (rete, codice) NON nasconde la pagina: compare in rosso nella scheda, con il rimedio.
-    L'elaborazione poi si ferma comunque con lo stesso errore appena parte."""
-    if not _db.collegato():
-        return {"collegato": False}
-    try:
-        s = _db.stato()
-    except ErroreUtente as e:
-        return {"collegato": True, "errore": str(e), "rimedio": cosa_fare(e)}
-    return {"collegato": True, "circoli": s["totale"], "ultima_aggiunta": s.get("ultima_aggiunta") or ""}
+    """Cosa mostrare nella scheda Circoli e nell'index: solo se su questo computer c'è il codice di accesso."""
+    return {"collegato": _db.collegato()}

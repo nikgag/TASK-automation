@@ -27,6 +27,8 @@ By hand this takes hours and is error-prone. T.A.S.K reduces it to: **upload →
 - Doubles: pairs read from the SGAT column `Numero Squadra`. The pair value is the sum of the two FITP ranking values, with separate scales for tennis and beach tennis (`core/ranking.py`).
 - Beach tennis: FITP coefficients are assigned and the official Entry List template is filled in (singles or doubles).
 - Optional extras: a contacts sheet with a pre-written WhatsApp message and the entry fee, a Live Score CSV, and scheduling sheets.
+- FITP fees (they change every year) are edited in the tournament form and remembered for the next tournament; amounts accept both `4,50` and `4.50`.
+- Housekeeping: uploaded and generated files (which contain player data) are deleted automatically after 14 days, or at once with *Svuota file temporanei* on the home page.
 
 **Team championship (*campionato a squadre*)**
 - Reads the FITP roster PDF (pdfplumber) and offers home and away teams in dropdowns.
@@ -117,7 +119,7 @@ Requirements: **Python 3.10+**, **Google Chrome**, an internet connection (for t
 - **macOS**: double-click `Start TASK.app`. The first time macOS asks whether *Start TASK* may access the folder (Desktop/Documents/Downloads): click **Allow**. If the app was downloaded as a ZIP, macOS may also block it: right-click → *Open* → *Open* (or System Settings → Privacy & Security → *Open Anyway*).
 - **Windows**: double-click `Start TASK.vbs`.
 
-The first time, open the *Tennis* or *Beach* page and paste the **access code** you received from the maintainer into the *Circoli* card: it is stored once per computer, outside the project folder.
+The first time TASK opens, a pop-up on the home page asks for the **access code** you received from the maintainer: it is stored once per computer, outside the project folder. Until a valid code is entered the three sections are disabled; if the code is revoked, the pop-up comes back. *Change access code* on the home page reopens it at any time.
 
 The launcher checks the Python version, creates a `.venv`, and installs the dependencies (again, automatically, when `requirements.txt` changes). If the app is already running, it only reopens the browser; otherwise it starts it on port 5050 (or the next free one). No terminal window is shown: messages go to `avvio.log`, errors appear in a dialog. To quit, close the browser page: the app shuts down a few seconds later (never while an elaboration is running).
 
@@ -158,11 +160,14 @@ TASK (each PC) ──POST + access code──► Apps Script web app ──► p
 - **Gatekeeper**: [`strumenti/apps_script/circoli.gs`](strumenti/apps_script/circoli.gs), deployed as a web app (*execute as: me*, *access: anyone*). It answers only what is asked:
   `cerca` (the clubs of one tournament), `province` (drop-down list), `stato` (count), `aggiungi` (append-only, re-validated server-side, with a lock and an audit trail of who added each row). There is no read-all and no delete.
 - **Access codes**: one token per user in the `Utenti` tab; untick *Attivo* to revoke one user. The script property `VERSIONE_MINIMA` rejects older TASK versions.
+- **Usage counter**: when a run starts (tennis, beach, championship, beach-coefficient update, club upload) TASK sends `uso` in the background, without waiting: it adds +1 to that user's counter in the `Utenti` tab (`Tennis | Beach | Campionato | Coeff. beach | Caricamento circoli | Ultimo uso | Versione`, columns created automatically). It is statistics only: if Google does not answer, the +1 is lost and the run is never slowed down. Only which function and when are recorded, never the content of a run.
+- **Revoking a code**: the home page checks the code in the background once per session (pop-up and disabled sections if revoked). When *Start* is pressed (tennis, beach, championship) TASK asks Google once more, with a single 8 s attempt: a rejected code stops the run before anything opens; if Google does not answer, the run starts anyway, so the championship never depends on Google and tennis/beach are checked again by the club lookup.
+- **Unreliable responses**: the Apps Script answers in 1–4 s, but sometimes its response never reaches the client. Every call therefore waits at most 12 s and is retried up to 3 times; after that TASK shows `Err 67`, distinct from `Err 60` (no connection at all).
 - **Client**: [`processor/circoli_db.py`](processor/circoli_db.py). The endpoint URL is public (`core/conf.py`, `URL_DB_CIRCOLI`): without a valid token it only returns `Err 61`. The token is stored per computer outside the project folder (`~/Library/Application Support/TASK` on macOS, `%LOCALAPPDATA%\TASK` on Windows), so it can never be committed.
 - **No offline cache**: without internet TASK cannot check memberships anyway, so a run stops immediately with `Err 60`.
 - **Maintenance**: corrections are made by hand in the sheet (the version history is the rollback). To update the script use *Manage deployments → Edit → New version*: a *new* deployment changes the URL and would require a new TASK release.
 
-Error codes `Err 60`–`Err 65` are documented in [`codici_errori.csv`](codici_errori.csv).
+Error codes `Err 60`–`Err 67` are documented in [`codici_errori.csv`](codici_errori.csv).
 
 ## AI assistance disclosure
 

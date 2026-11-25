@@ -13,6 +13,7 @@ Percorso di un torneo:
 """
 import io
 import os
+import re
 import secrets
 import sys
 import threading
@@ -36,6 +37,8 @@ import pdfplumber
 from core import conf, lavori
 from core.errori import ErroreUtente, codici_non_documentati, cosa_fare
 from core import aggiorna
+from core import pulizia
+from core import impostazioni
 from processor import campionato as _cs
 from processor import data_update
 from processor import circoli_db
@@ -158,6 +161,16 @@ def _aggiornamento_disponibile():
     return {"aggiornamento": aggiorna.release_disponibile()}
 
 
+# quote FIT salvate dall'utente: applicate all'avvio (contatti.py le legge da conf) e
+# disponibili ai template (il modulo torneo le propone come ultime inserite)
+impostazioni.applica()
+
+
+@app.context_processor
+def _quote_fit():
+    return {"quote_fit": impostazioni.quote()}
+
+
 # Rotta di aggiornamento: scarica il nuovo exe e riavvia l'applicazione.
 # coll: aggiorna.scarica_e_installa | html: base.html (link nel banner)
 @app.route("/aggiorna", methods=["POST"])
@@ -194,11 +207,14 @@ def _gg_mm_aaaa(data: datetime) -> str:
     return data.strftime("%d/%m/%Y")                     # formato che vuole fitp_driver
 
 
-def _quota(campo: str) -> float:
-    valore = float(request.form[campo])
-    if valore < 0:
-        raise ErroreUtente(f"Err 13: '{campo}' non può essere negativa ({valore}).")
-    return valore
+# le caselle delle quote sono di testo: si accettano "4,50", "4.50", "4,5 €".
+# Con type="number" la virgola italiana, a seconda del browser, arrivava vuota o dava errore.
+def _quota(campo: str, nome: str | None = None) -> float:
+    scritto = request.form.get(campo, "")
+    pulito = scritto.replace("€", "").replace(" ", "").strip()
+    if not re.fullmatch(r"\d{1,3}([.,]\d{1,2})?", pulito):
+        raise ErroreUtente(f"Err 13: {nome or campo}: «{scritto}» non è un importo valido (esempio: 4,50).")
+    return float(pulito.replace(",", "."))
 
 
 def _nuova_cartella() -> Path:
@@ -256,8 +272,25 @@ def _con_driver(lavoro: lavori.Lavoro, esegui):
         return esegui(driver)
 
 
+# Senza codice di accesso nessuna funzione: si torna all'index per collegarsi.
+def _serve_collegamento():
+    if circoli_db.collegato():
+        return None
+    flash("Prima collega TASK: incolla il codice di accesso qui sotto.", "warning")
+    return redirect(url_for("index"))
+
+
 def _avvia(tipo: str, opz, titolo: str):
     """Lancia main.torneo(opz) in un thread e rimanda subito alla pagina di avanzamento."""
+    # codice rifiutato da Google -> si resta sul modulo con il messaggio (e l'index rimostrerà il popup);
+    # Google che non risponde -> si parte lo stesso (circoli_db.verifica_avvio)
+    try:
+        if circoli_db.verifica_avvio():
+            _codice_verificato["ok"] = True
+    except ErroreUtente:
+        _codice_verificato["ok"] = False
+        raise
+    circoli_db.registra_uso(tipo)   # contatore in sottofondo, non aspetta Google
     def lavoro_vero(lavoro: lavori.Lavoro) -> dict:
         return _con_driver(lavoro, lambda driver: _main.torneo(
             opz, driver=driver, log=lavoro.log, avanzamento=lavoro.avanzamento))
@@ -270,11 +303,51 @@ def _avvia(tipo: str, opz, titolo: str):
 # Rotte: pagine e form
 # =============================================================================
 
-# Home: tre schede per scegliere tennis, beach tennis o campionato a squadre.
-# coll: nessuno | html: index.html
+# Home: tre schede (tennis, beach, campionato); senza codice valido mostra solo il riquadro per collegarsi.
+# coll: data_update.stato_circoli -> circoli_db.collegato (niente rete) | html: index.html
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", db=data_update.stato_circoli(),
+                           temporanei=pulizia.in_mb(pulizia.dimensione()),
+                           giorni_temporanei=conf.GIORNI_FILE_TEMPORANEI)
+
+
+# Svuota subito i file temporanei (upload/, output/, liste campionato vecchie), mai durante un'elaborazione.
+# coll: pulizia.svuota_tutto | html: index.html
+@app.route("/pulizia", methods=["POST"])
+def svuota_temporanei():
+    occupato = _occupato()
+    if occupato:
+        return occupato
+    esito = pulizia.svuota_tutto()
+    session.pop("cs", None)                  # i file del campionato in corso non ci sono più
+    flash(f"File temporanei tolti: {esito['tolti']} ({pulizia.in_mb(esito['byte'])}).", "success")
+    if esito["saltati"]:
+        flash(f"Non tolti (forse aperti in un altro programma): {', '.join(esito['saltati'])}.", "warning")
+    return redirect(url_for("index"))
+
+
+# verifica riuscita = vale finché TASK resta aperto (niente chiamate a Google a ogni ritorno sull'index).
+# Se fallisce si riprova alla visita successiva; collegare un codice nuovo conta come verifica riuscita.
+_codice_verificato = {"ok": False}
+
+
+# Verifica del codice di accesso, chiamata in sottofondo dall'index (JavaScript) dopo che la pagina è aperta.
+# coll: circoli_db.collegato, circoli_db.stato (una volta per sessione) | html: index.html (popup del codice)
+@app.route("/db/verifica")
+def verifica_db():
+    if not circoli_db.collegato():
+        return {"esito": "non_collegato"}
+    if _codice_verificato["ok"]:
+        return {"esito": "ok"}
+    try:
+        circoli_db.stato()
+    except ErroreUtente as e:
+        # codice disattivato / versione non ammessa / codice mancante -> popup; rete o Google lento -> solo avviso
+        esito = "non_valido" if str(e).startswith(("Err 61", "Err 62", "Err 65")) else "irraggiungibile"
+        return {"esito": esito, "messaggio": str(e), "rimedio": cosa_fare(e)}
+    _codice_verificato["ok"] = True
+    return {"esito": "ok"}
 
 
 # Torneo tennis (singolare o doppio): GET mostra il modulo, POST avvia il controllo tessere in background.
@@ -297,6 +370,9 @@ def beach():
 
 def _pagina_torneo(sport: str):
     """Parte comune di tennis e beach: stessi campi, cambia solo `sport` (e il doppio nel beach)."""
+    scollegato = _serve_collegamento()
+    if scollegato:
+        return scollegato
     occupato = _occupato()
     if occupato:
         return occupato
@@ -318,6 +394,8 @@ def _pagina_torneo(sport: str):
     con_quota = _scelta("con_quota", ("si", "no")) == "si"    # con_quota
     gen_ls = _scelta("gen_ls", ("si", "no")) == "si"          # gen_ls
     gen_prog = _scelta("gen_prog", ("si", "no")) == "si"      # gen_prog
+    if con_quota:   # quote FIT del modulo: salvate (il prossimo torneo le ritrova) e applicate subito
+        impostazioni.salva_quote(_quota("quota_fit_under", "quota FIT Under"), _quota("quota_fit_over", "quota FIT Over"))
 
     # 2) file iscritti -> upload/<data_ora_codice>/
     cartella = _nuova_cartella()
@@ -334,8 +412,8 @@ def _pagina_torneo(sport: str):
         data_fine=_gg_mm_aaaa(fine),
         nome_torneo=request.form.get("nome_torneo", "").strip(),
         con_quota=con_quota,
-        quota_under=_quota("quota_under") if con_quota else 0.0,     # campo spento se quota = no
-        quota_over=_quota("quota_over") if con_quota else 0.0,
+        quota_under=_quota("quota_under", "quota torneo Under") if con_quota else 0.0,     # campo spento se quota = no
+        quota_over=_quota("quota_over", "quota torneo Over") if con_quota else 0.0,
         gen_ls=gen_ls,
         ls_event=_scelta("ls_event", ("M", "F")) if gen_ls else None,  # campo spento se live score = no
         ls_path=str(conf.OUTPUT_DIR / f"{base}_LiveScore.csv"),
@@ -359,9 +437,13 @@ def _esito_aggiornamento(id_lavoro):
 # coll: lavori -> data_update.aggiorna_coeff_beach -> pdfplumber | html: beach.html -> elaborazione.html -> beach.html
 @app.route("/beach/coefficienti", methods=["POST"])
 def aggiorna_coeff_beach():
+    scollegato = _serve_collegamento()
+    if scollegato:
+        return scollegato
     occupato = _occupato()                     # anche per sicurezza: mai sostituire il file mentre un torneo lo usa
     if occupato:
         return occupato
+    circoli_db.registra_uso("coeff_beach")   # contatore in sottofondo
     caricati = [f for f in request.files.getlist("pdf_classifiche") if f.filename]
     if not 1 <= len(caricati) <= 2:
         raise ErroreUtente(f"Err 46: {len(caricati)} file caricati: serve il PDF unito oppure i due PDF FITP.")
@@ -399,6 +481,10 @@ def circoli_da_mappare(id_lavoro):
 # coll: data_update.aggiungi_circoli -> file_utente.leggi_circoli_compilati | html: _circoli.html (download, tennis, beach)
 @app.route("/circoli/aggiungi", methods=["POST"])
 def aggiungi_circoli():
+    scollegato = _serve_collegamento()
+    if scollegato:
+        return scollegato
+    circoli_db.registra_uso("circoli")   # contatore in sottofondo
     compilato = _salva(request.files["file_circoli"], _nuova_cartella(), (".xlsx",))
     avvisi: list[str] = []
     esito = data_update.aggiungi_circoli(compilato, log=avvisi.append)   # Err 30/48/49/51, 60-65 -> ErroreUtente
@@ -418,19 +504,23 @@ def aggiungi_circoli():
     return redirect(request.referrer or url_for("index"))
 
 
-# Collega TASK al DB circoli: prova il codice di accesso, poi lo salva.
-# coll: circoli_db.collega -> circoli_db.salva_config | html: _circoli.html (tennis, beach)
+# Collega TASK: prova il codice di accesso, lo salva e torna alla home.
+# coll: circoli_db.collega -> circoli_db.salva_config | html: index.html
 @app.route("/circoli/collega", methods=["POST"])
 def collega_db_circoli():
     stato = circoli_db.collega(request.form.get("token", ""))   # Err 60-65 -> ErroreUtente
-    flash(f"DB circoli collegato: {stato['totale']} circoli.", "success")
-    return redirect(request.referrer or url_for("index"))
+    _codice_verificato["ok"] = True   # codice appena provato con successo
+    flash(f"TASK collegato: {stato['totale']} circoli nel DB.", "success")
+    return redirect(url_for("index"))
 
 
 # Campionato fase 1: salva e controlla PDF e file SGAT, legge le squadre dal PDF e salva il CSV.
 # coll: file_utente.leggi_sgat | campionato.leggi_lista (pdfplumber) -> campionato.lista_csv | html: campionato.html fase 1 -> fase 2
 @app.route("/campionato", methods=["GET", "POST"])
 def campionato():
+    scollegato = _serve_collegamento()
+    if scollegato:
+        return scollegato
     occupato = _occupato()
     if occupato:
         return occupato
@@ -520,6 +610,9 @@ def modello_sgat():
 # html: campionato.html fase 2 -> elaborazione.html -> download.html
 @app.route("/campionato/genera", methods=["POST"])
 def campionato_genera():
+    scollegato = _serve_collegamento()
+    if scollegato:
+        return scollegato
     occupato = _occupato()
     if occupato:
         return occupato
@@ -605,9 +698,10 @@ def get_file(id_lavoro):
     lavoro = lavori.prendi(id_lavoro)
     if lavoro is None or lavoro.esito is None:
         abort(404, "File non trovato: il programma è stato riavviato?")
-    if request.args.get("tipo") == "live_score":
-        return send_file(lavoro.esito["live_score"]["file"], as_attachment=True)
-    return send_file(lavoro.esito["file_output"], as_attachment=True)
+    file = lavoro.esito["live_score"]["file"] if request.args.get("tipo") == "live_score" else lavoro.esito["file_output"]
+    if not Path(file).is_file():   # può essere stato tolto dalla pulizia dei file temporanei
+        abort(404, "Il file è stato tolto con la pulizia dei file temporanei: rilancia l'elaborazione.")
+    return send_file(file, as_attachment=True)
 
 
 # Avvia il server sulla porta data, apre il browser e fa partire il watchdog; ritorna solo alla chiusura.
@@ -631,6 +725,11 @@ def avvia_server(porta: int) -> None:
     if not DEBUG or os.environ.get("WERKZEUG_RUN_MAIN"):
         threading.Thread(target=_watchdog, daemon=True).start()
         aggiorna.controlla_in_background()    # controlla GitHub Releases (solo nell'exe, non blocca)
+        # all'avvio si tolgono i file temporanei vecchi (nessuna elaborazione può essere in corso)
+        esito = pulizia.pulisci_vecchi()
+        if esito["tolti"] or esito["saltati"]:
+            print(f"Pulizia: tolti {esito['tolti']} file/cartelle più vecchi di {conf.GIORNI_FILE_TEMPORANEI} giorni "
+                  f"({pulizia.in_mb(esito['byte'])}); non tolti: {', '.join(esito['saltati']) or 'nessuno'}", flush=True)
     # ATTENZIONE (solo FITP_DEBUG=1): se salvi un .py mentre un'elaborazione gira, Flask si riavvia e la perde.
     app.run(host="127.0.0.1", port=porta, debug=DEBUG, threaded=True)
 

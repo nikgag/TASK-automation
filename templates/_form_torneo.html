@@ -98,17 +98,36 @@
         </div>
       </div>
       <div class="dettagli" data-se="con_quota=si">
+        {#- caselle di testo (virgola o punto) al posto di type="number"; quote FIT modificabili qui,
+            precompilate con le ultime salvate (core/impostazioni.py) e salvate quando il torneo parte -#}
         <div class="riga-2">
           <div class="campo" data-etichetta="quota Under">
             <label for="quota_under">Quota torneo Under (€)</label>
-            <input type="number" id="quota_under" name="quota_under" value="0" min="0" max="500" step="0.5" inputmode="decimal" required>
+            <input type="text" id="quota_under" name="quota_under" value="0" inputmode="decimal" autocomplete="off"
+                   pattern="\d{1,3}([.,]\d{1,2})?" title="Un importo, per esempio 10 oppure 10,50" required>
           </div>
           <div class="campo" data-etichetta="quota Over">
             <label for="quota_over">Quota torneo Over (€)</label>
-            <input type="number" id="quota_over" name="quota_over" value="0" min="0" max="500" step="0.5" inputmode="decimal" required>
+            <input type="text" id="quota_over" name="quota_over" value="0" inputmode="decimal" autocomplete="off"
+                   pattern="\d{1,3}([.,]\d{1,2})?" title="Un importo, per esempio 10 oppure 10,50" required>
           </div>
         </div>
-        <p class="aiuto">Under = categorie U10–U16. La tassa FITP viene sommata in automatico: inserisci solo la quota circolo.</p>
+        <div class="riga-2">
+          <div class="campo" data-etichetta="quota FIT Under">
+            <label for="quota_fit_under">Quota FIT Under (€)</label>
+            <input type="text" id="quota_fit_under" name="quota_fit_under" inputmode="decimal" autocomplete="off"
+                   value="{{ '%.2f' | format(quote_fit.under) | replace('.', ',') }}"
+                   pattern="\d{1,3}([.,]\d{1,2})?" title="Un importo, per esempio 4,50" required>
+          </div>
+          <div class="campo" data-etichetta="quota FIT Over">
+            <label for="quota_fit_over">Quota FIT Over (€)</label>
+            <input type="text" id="quota_fit_over" name="quota_fit_over" inputmode="decimal" autocomplete="off"
+                   value="{{ '%.2f' | format(quote_fit.over) | replace('.', ',') }}"
+                   pattern="\d{1,3}([.,]\d{1,2})?" title="Un importo, per esempio 9,00" required>
+          </div>
+        </div>
+        <p class="aiuto">Under = categorie U10–U16. La quota FIT viene sommata in automatico alla quota del torneo.
+          Le quote FIT sono quelle dell'ultima volta: cambiale solo se la FITP le ha aggiornate (restano salvate per i prossimi tornei).</p>
       </div>
     </fieldset>
   </section>
