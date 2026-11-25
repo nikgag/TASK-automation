@@ -9,6 +9,8 @@
  * Fogli (riga 1 = intestazioni):
  *   Circoli : Circolo | Provincia | Regione | Aggiunto il | Da
  *   Utenti  : Nome | Token | Attivo        (Attivo = casella di controllo: togli la spunta per bloccare)
+ *             + contatori aggiunti da soli al primo uso:
+ *             Tennis | Beach | Campionato | Coeff. beach | Caricamento circoli | Ultimo uso | Versione
  * Proprieta' dello script (Impostazioni progetto > Proprieta' script):
  *   VERSIONE_MINIMA   es. 2.1.0 -> le versioni di TASK piu' vecchie vengono rifiutate
  *
@@ -17,6 +19,7 @@
  *   cerca     {nomi: [...]}                 -> {trovati: {NOME MAIUSCOLO: [provincia, regione]}}
  *   stato     -> {totale, ultima_aggiunta}
  *   aggiungi  {righe: [[circolo, provincia], ...]} -> {aggiunti, gia_presenti, totale}
+ *   uso       {funzione: tennis|beach|campionato|coeff_beach|circoli} -> {}  (+1 nel contatore dell'utente)
  * Risposta sempre JSON {ok: true, ...} oppure {ok: false, errore: "Err NN: ..."}
  * (le App web non possono restituire codici HTTP d'errore).
  */
@@ -41,7 +44,8 @@ function doPost(e) {
       case 'province': risposta = { province: province_(leggiCircoli_()) }; break;
       case 'cerca':    risposta = cerca_(richiesta.nomi); break;
       case 'stato':    risposta = stato_(); break;
-      case 'aggiungi': risposta = aggiungi_(richiesta.righe, utente, richiesta.versione); break;
+      case 'aggiungi': risposta = aggiungi_(richiesta.righe, utente.nome, richiesta.versione); break;
+      case 'uso':      risposta = registraUso_(richiesta.funzione, utente, richiesta.versione); break;
       default: throw new Error('Err 63: azione sconosciuta: ' + richiesta.azione);
     }
     risposta.ok = true;
@@ -69,11 +73,12 @@ function autentica_(r) {
   }
   const utenti = foglio_(FOGLIO_UTENTI).getDataRange().getValues().slice(1);
   const token = r.token.trim();
-  const u = utenti.find(function (x) { return String(x[1]).trim() === token; });
-  if (!u || u[2] !== true) {
+  const i = utenti.findIndex(function (x) { return String(x[1]).trim() === token; });
+  if (i < 0 || utenti[i][2] !== true) {
     throw new Error('Err 61: codice di accesso non valido o disattivato.');
   }
-  return String(u[0]).trim();
+  // anche la riga del foglio (serve al contatore); riga 1 = intestazioni
+  return { nome: String(utenti[i][0]).trim(), riga: i + 2 };
 }
 
 function confrontaVersioni_(a, b) {
@@ -204,4 +209,60 @@ function aggiungi_(righe, utente, versione) {
   } finally {
     lock.releaseLock();
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// contatore delle funzioni usate (foglio Utenti), una colonna per funzione.
+// Si conta quando un'elaborazione PARTE (non i clic). Le colonne mancanti si aggiungono da sole,
+// in fondo alla riga di intestazione e sempre nello stesso ordine.
+// ---------------------------------------------------------------------------
+const COLONNE_USO = {
+  tennis: 'Tennis', beach: 'Beach', campionato: 'Campionato',
+  coeff_beach: 'Coeff. beach', circoli: 'Caricamento circoli'
+};
+const COLONNA_ULTIMO_USO = 'Ultimo uso';
+const COLONNA_VERSIONE = 'Versione';
+
+function registraUso_(funzione, utente, versione) {
+  const titolo = COLONNE_USO[funzione];
+  if (!titolo) throw new Error('Err 63: funzione sconosciuta per il contatore: ' + funzione);
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(ATTESA_LOCK_MS)) {
+    throw new Error('Err 64: il DB e\' occupato da un altro utente, riprova tra qualche secondo.');
+  }
+  try {
+    const foglio = foglio_(FOGLIO_UTENTI);
+    const titoli = Object.keys(COLONNE_USO).map(function (k) { return COLONNE_USO[k]; })
+      .concat([COLONNA_ULTIMO_USO, COLONNA_VERSIONE]);
+    const col = colonne_(foglio, titoli);
+    const cella = foglio.getRange(utente.riga, col[titolo]);
+    cella.setValue((Number(cella.getValue()) || 0) + 1);
+    foglio.getRange(utente.riga, col[COLONNA_ULTIMO_USO]).setNumberFormat('@')
+      .setValue(Utilities.formatDate(new Date(), 'Europe/Rome', 'yyyy-MM-dd HH:mm'));
+    foglio.getRange(utente.riga, col[COLONNA_VERSIONE]).setNumberFormat('@').setValue(String(versione || '?'));
+    SpreadsheetApp.flush();
+  } finally {
+    lock.releaseLock();
+  }
+  return {};
+}
+
+// {titolo: numero di colonna}; le intestazioni che mancano vengono scritte in fondo alla riga 1.
+function colonne_(foglio, titoli) {
+  const ultima = Math.max(foglio.getLastColumn(), 1);
+  const intestazioni = foglio.getRange(1, 1, 1, ultima).getDisplayValues()[0]
+    .map(function (x) { return String(x).trim(); });
+  const out = {};
+  let prossima = ultima + 1;
+  titoli.forEach(function (t) {
+    const i = intestazioni.indexOf(t);
+    if (i >= 0) {
+      out[t] = i + 1;
+    } else {
+      foglio.getRange(1, prossima).setValue(t);
+      out[t] = prossima++;
+    }
+  });
+  return out;
 }

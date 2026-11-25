@@ -1,6 +1,15 @@
 {% extends "base.html" %}
-{#- Pagina di benvenuto: tre schede, una per sotto-processo (url_for('tennis'), 'beach', 'campionato'). -#}
+{#- Pagina di benvenuto: tre schede, una per sotto-processo (url_for('tennis'), 'beach', 'campionato').
+    Popup del codice di accesso.
+      db = data_update.stato_circoli() = {collegato: bool}, senza rete: la pagina si apre subito.
+      - nessun codice su questo computer -> schede spente e popup aperto subito;
+      - codice presente -> lo script chiede /db/verifica in sottofondo:
+          non_valido (Err 61/62/65) -> schede spente e popup con il messaggio;
+          irraggiungibile (rete, Google lento) -> solo un avviso, niente popup (si ricontrolla all'avvio dei lavori);
+      - il pulsante "Cambia codice di accesso" riapre sempre il popup.
+-#}
 {% from "_icone.html" import icona %}
+{% set collegato = db is defined and db.collegato %}
 
 {% block titolo %}Home{% endblock %}
 {% block larghezza %}largo{% endblock %}
@@ -15,8 +24,10 @@
   </p>
 </section>
 
+<p class="aiuto avviso-db" id="avviso-db" hidden></p>
+
 <nav class="scelte" aria-label="Scegli il tipo di competizione">
-  <a class="app-card" data-tema="tennis" href="{{ url_for('tennis') }}">
+  <a class="app-card{{ '' if collegato else ' disattivata' }}" data-tema="tennis" data-href="{{ url_for('tennis') }}" {% if collegato %}href="{{ url_for('tennis') }}"{% else %}aria-disabled="true" tabindex="-1"{% endif %}>
     <span class="app-icona">{{ icona('tennis') }}</span>
     <span class="app-titolo">Torneo di tennis</span>
     <span class="app-desc">
@@ -26,7 +37,7 @@
     <span class="app-azione">Inizia {{ icona('freccia') }}</span>
   </a>
 
-  <a class="app-card" data-tema="beach" href="{{ url_for('beach') }}">
+  <a class="app-card{{ '' if collegato else ' disattivata' }}" data-tema="beach" data-href="{{ url_for('beach') }}" {% if collegato %}href="{{ url_for('beach') }}"{% else %}aria-disabled="true" tabindex="-1"{% endif %}>
     <span class="app-icona">{{ icona('beach') }}</span>
     <span class="app-titolo">Torneo di beach tennis</span>
     <span class="app-desc">
@@ -36,7 +47,7 @@
     <span class="app-azione">Inizia {{ icona('freccia') }}</span>
   </a>
 
-  <a class="app-card" data-tema="campionato" href="{{ url_for('campionato') }}">
+  <a class="app-card{{ '' if collegato else ' disattivata' }}" data-tema="campionato" data-href="{{ url_for('campionato') }}" {% if collegato %}href="{{ url_for('campionato') }}"{% else %}aria-disabled="true" tabindex="-1"{% endif %}>
     <span class="app-icona">{{ icona('campionato') }}</span>
     <span class="app-titolo">Campionato a squadre</span>
     <span class="app-desc">
@@ -52,4 +63,101 @@
   <li><span><strong>Scegli</strong>solo opzioni guidate, niente da scrivere a mano</span></li>
   <li><span><strong>Scarica</strong>il file Excel con il riepilogo dei controlli</span></li>
 </ol>
+
+<div class="stato-db">
+  <button type="button" class="btn btn-secondario" id="apri-codice">Cambia codice di accesso</button>
+  {#- pulizia dei file temporanei; quelli più vecchi di conf.GIORNI_FILE_TEMPORANEI si tolgono da soli all'avvio -#}
+  <form class="form-pulizia" method="post" action="{{ url_for('svuota_temporanei') }}"
+        onsubmit="return confirm('Togliere ora tutti i file caricati ed elaborati? Gli Excel già scaricati restano dove li hai salvati.');">
+    <button type="submit" class="btn btn-secondario">Svuota file temporanei ({{ temporanei }})</button>
+  </form>
+  <p class="aiuto">I file caricati ed elaborati si tolgono da soli dopo {{ giorni_temporanei }} giorni.</p>
+</div>
+
+<dialog class="dialogo-codice" id="dialogo-codice" aria-labelledby="dialogo-titolo"
+        data-apri="{{ '1' if not collegato else '' }}" data-verifica="{{ url_for('verifica_db') if collegato else '' }}">
+  <h2 class="card-titolo" id="dialogo-titolo">{{ 'Collega TASK' if not collegato else 'Codice di accesso' }}</h2>
+  <div id="dialogo-errore"></div>
+  <p class="aiuto" id="dialogo-testo">
+    {%- if not collegato -%}
+      Per usare TASK serve il codice di accesso che ti ha dato chi gestisce il programma. Si inserisce una volta sola su questo computer.
+    {%- else -%}
+      Incolla il nuovo codice di accesso che ti ha dato chi gestisce il programma.
+    {%- endif -%}
+  </p>
+  <form class="form-guidato" method="post" action="{{ url_for('collega_db_circoli') }}" data-attesa="Provo il collegamento…">
+    <div class="campo" data-etichetta="Codice di accesso">
+      <input type="password" name="token" required autocomplete="off">
+    </div>
+    <div class="invio">
+      <button type="submit" class="btn btn-primario">Collega {{ icona('freccia') }}</button>
+      <p class="mancanti" aria-live="polite"></p>
+    </div>
+  </form>
+  <button type="button" class="btn-testo dialogo-chiudi" id="chiudi-codice">Chiudi</button>
+</dialog>
+
+<script>
+  (function () {
+    var dialogo = document.getElementById("dialogo-codice");
+    var errore = document.getElementById("dialogo-errore");
+    var testo = document.getElementById("dialogo-testo");
+    var schede = document.querySelectorAll(".scelte .app-card");
+
+    function accendi(si) {               // schede attive (link) oppure spente
+      schede.forEach(function (a) {
+        a.classList.toggle("disattivata", !si);
+        if (si) { a.setAttribute("href", a.dataset.href); a.removeAttribute("aria-disabled"); a.removeAttribute("tabindex"); }
+        else { a.removeAttribute("href"); a.setAttribute("aria-disabled", "true"); a.setAttribute("tabindex", "-1"); }
+      });
+    }
+    function apri(messaggio, rimedio) {
+      errore.innerHTML = "";
+      // un errore appena arrivato dal server (es. codice sbagliato) si vede anche dentro il popup
+      var flash = document.querySelector(".avviso.avviso-error");
+      if (messaggio || flash) {
+        var box = document.createElement("p");
+        box.className = "aiuto errore-codice";
+        if (messaggio) {
+          var forte = document.createElement("strong"); forte.textContent = messaggio; box.appendChild(forte);
+          if (rimedio) { box.appendChild(document.createElement("br")); box.appendChild(document.createTextNode(rimedio)); }
+        } else {
+          box.textContent = flash.textContent.trim();
+        }
+        errore.appendChild(box);
+      }
+      if (!dialogo.open) dialogo.showModal();
+      var campo = dialogo.querySelector('input[name="token"]');
+      if (campo) campo.focus();
+    }
+
+    document.getElementById("apri-codice").addEventListener("click", function () { apri(); });
+    document.getElementById("chiudi-codice").addEventListener("click", function () { dialogo.close(); });
+    // all'invio si chiude il popup, così si vede la schermata di attesa di app.js
+    dialogo.querySelector("form").addEventListener("submit", function () { if (dialogo.open) dialogo.close(); });
+
+    accendi(!dialogo.dataset.apri);
+    if (dialogo.dataset.apri) { apri(); return; }
+
+    var url = dialogo.dataset.verifica;
+    if (!url) return;
+    fetch(url, { headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.esito === "non_valido") {
+          accendi(false);
+          document.getElementById("dialogo-titolo").textContent = "Codice non valido";
+          testo.textContent = "Il codice salvato su questo computer non funziona più. Incolla un codice valido.";
+          apri(d.messaggio, d.rimedio);
+        } else if (d.esito === "non_collegato") {
+          accendi(false); apri();
+        } else if (d.esito === "irraggiungibile") {
+          var avviso = document.getElementById("avviso-db");
+          avviso.textContent = "Non riesco a verificare il codice adesso (" + d.messaggio + "). Puoi lavorare: il controllo si ripete all'avvio dell'elaborazione.";
+          avviso.hidden = false;
+        }
+      })
+      .catch(function () { /* TASK chiuso o rete locale: nessun popup, si ricontrolla all'avvio dei lavori */ });
+  })();
+</script>
 {% endblock %}

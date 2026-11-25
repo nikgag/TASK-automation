@@ -10,9 +10,11 @@
   province()               {provincia: regione} per la tendina dell'Excel
   aggiungi(righe)          [(circolo, provincia), ...] -> il portinaio ricontrolla e scrive in fondo
   stato()                  {"totale": n, "ultima_aggiunta": "aaaa-mm-gg hh:mm:ss"}
+  registra_uso(funzione)   +1 nel contatore dell'utente (foglio Utenti), in sottofondo, senza aspettare
 
 Errori (tutti ErroreUtente, messaggio "Err NN: ..." come nel resto dell'app):
-  Err 60 rete / portinaio non raggiungibile   Err 61-64 rifiutato dal portinaio
+  Err 60 rete assente / portinaio non raggiungibile   Err 61-64 rifiutato dal portinaio
+  Err 67 la richiesta arriva a Google ma la risposta no (dopo TENTATIVI tentativi)
   Err 65 DB non collegato su questo computer
 Niente copia locale: senza rete TASK non lavora comunque (driver FITP), quindi si ferma subito.
 """
@@ -20,14 +22,21 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import ssl
+import threading
 import urllib.error
 import urllib.request
 
 from core import conf
 from core.errori import ErroreUtente
 
-TIMEOUT_S = 30
+# attese brevi e più tentativi. Lo script su Google risponde in 1-4 s, ma ogni tanto (circa una
+# chiamata su 5-6 nei test, via IPv4 e IPv6, su reti diverse) la risposta non arriva mai: aspettare
+# 30 s era inutile, riprovare invece funziona quasi sempre. Vale per TUTTE le azioni: "uso" in quel
+# caso raro può contare due volte, "aggiungi" è protetto dal portinaio (scarta i doppioni).
+TIMEOUT_S = 12
+TENTATIVI = 3
 MAX_NOMI = 2000                 # come nel portinaio: oltre, la ricerca si fa a blocchi
 
 
@@ -82,20 +91,36 @@ def collega(token: str) -> dict:
     return stato_db
 
 
-def _chiama(azione: str, cfg: dict | None = None, **dati) -> dict:
+def _scaduto(e: BaseException) -> bool:
+    """True se l'errore è un tempo scaduto (anche se urllib lo incarta in un URLError)."""
+    motivo = getattr(e, "reason", e)
+    return isinstance(motivo, (TimeoutError, socket.timeout)) or "timed out" in str(e).lower()
+
+
+def _chiama(azione: str, cfg: dict | None = None, tentativi: int | None = None, timeout: float | None = None,
+            **dati) -> dict:
     cfg = cfg or _config()
+    tentativi, timeout = tentativi or TENTATIVI, timeout or TIMEOUT_S   # letti adesso, non alla definizione
     corpo = json.dumps({"token": cfg["token"], "versione": conf.VERSIONE, "azione": azione, **dati}).encode("utf-8")
     richiesta = urllib.request.Request(cfg["url"], data=corpo, method="POST",
                                        headers={"Content-Type": "application/json"})
     # Google risponde con un redirect: urllib lo segue da solo (diventa GET, come vuole Apps Script)
-    try:
-        with urllib.request.urlopen(richiesta, timeout=TIMEOUT_S, context=_contesto_ssl()) as r:
-            testo = r.read().decode("utf-8")
-    except urllib.error.HTTPError as e:
-        raise ErroreUtente(f"Err 60: il DB circoli ha risposto con errore HTTP {e.code}: "
-                           f"il DB circoli è stato spostato o rimosso?") from e
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        raise ErroreUtente(f"Err 60: DB circoli non raggiungibile (rete assente?): {e}") from e
+    for tentativo in range(1, tentativi + 1):
+        try:
+            with urllib.request.urlopen(richiesta, timeout=timeout, context=_contesto_ssl()) as r:
+                testo = r.read().decode("utf-8")
+            break
+        except urllib.error.HTTPError as e:
+            raise ErroreUtente(f"Err 60: il DB circoli ha risposto con errore HTTP {e.code}: "
+                               f"il DB circoli è stato spostato o rimosso?") from e
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            # tempo scaduto = Google ha ricevuto ma la risposta non arriva: si riprova, poi Err 67.
+            # Qualunque altro errore (niente rete, nome non trovato, connessione rifiutata): Err 60 subito.
+            if not _scaduto(e):
+                raise ErroreUtente(f"Err 60: nessuna connessione a Google (rete assente?): {e}") from e
+            if tentativo == tentativi:
+                raise ErroreUtente(f"Err 67: Google ha ricevuto la richiesta, ma dopo {tentativi} tentativi da "
+                                   f"{timeout:g} s la risposta non è arrivata.") from e
 
     try:
         risposta = json.loads(testo)
@@ -134,3 +159,48 @@ def aggiungi(righe: list[tuple[str, str]]) -> dict:
 
 def stato() -> dict:
     return _chiama("stato")
+
+
+# contatore delle funzioni usate, IN SOTTOFONDO: è statistica, non deve mai bloccare né rallentare
+# un'elaborazione. Si manda quando un'elaborazione parte (core/app.py) senza aspettare la risposta;
+# se Google non risponde il +1 si perde e lo si scrive solo nel registro di avvio.
+# La revoca del codice resta: tennis e beach chiamano comunque "cerca", il campionato si ferma
+# dall'index (popup e schede spente).
+FUNZIONI_USO = ("tennis", "beach", "campionato", "coeff_beach", "circoli")
+
+
+def registra_uso(funzione: str) -> None:
+    if funzione not in FUNZIONI_USO:
+        raise ValueError(f"funzione sconosciuta per il contatore: {funzione!r}")   # errore di programma
+    if not collegato():
+        return
+
+    def invia():
+        try:
+            _chiama("uso", funzione=funzione)
+        except Exception as e:                      # qualunque errore: il lavoro dell'utente va avanti
+            print(f"Contatore non aggiornato ({funzione}): {e}", flush=True)
+
+    threading.Thread(target=invia, daemon=True, name=f"contatore-{funzione}").start()
+
+
+# controllo del codice quando si preme Avvia (tennis, beach, campionato).
+# Blocca SOLO se Google risponde "codice non valido" (Err 61, 62, 65): così un codice revocato non
+# apre nemmeno Chrome. Se Google non risponde (Err 60, 63, 67) si parte lo stesso: il campionato non
+# deve dipendere da Google, e tennis/beach lo ricontrollano comunque con "cerca".
+# Un solo tentativo breve: al massimo VERIFICA_S secondi in più all'avvio.
+VERIFICA_S = 8
+BLOCCANTI = ("Err 61", "Err 62", "Err 65")
+
+
+def verifica_avvio() -> bool:
+    """True = codice confermato da Google; False = Google non ha risposto (si parte lo stesso).
+    Solleva ErroreUtente se il codice è stato rifiutato."""
+    try:
+        _chiama("stato", tentativi=1, timeout=VERIFICA_S)
+    except ErroreUtente as e:
+        if str(e).startswith(BLOCCANTI):
+            raise
+        print(f"Controllo del codice non riuscito, si parte lo stesso: {e}", flush=True)
+        return False
+    return True

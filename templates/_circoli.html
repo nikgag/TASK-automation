@@ -5,9 +5,9 @@
     Due usi:
       download.html      circoli_mancanti = lista dei circoli del torneo non ancora nel DB, id_lavoro
       tennis/beach.html  circoli = data_update.stato_circoli():
-                           {collegato: False}                      -> riquadro per collegare il DB
-                           {collegato: True, errore, rimedio}       -> errore in rosso + riquadro per ricollegare
-                           {collegato: True, circoli, ultima_aggiunta}
+                           {collegato: False}                      -> rimando all'index per collegarsi
+                           {collegato: True, errore, rimedio}       -> errore in rosso + rimando all'index
+                           {collegato: True}                        -> collegato (niente rete all'apertura)
 -#}
 {% from "_icone.html" import icona %}
 {% set pagina_finale = circoli_mancanti is defined and circoli_mancanti is not none %}
@@ -22,7 +22,7 @@
       {% else %}<span class="chip ok">Aggiunti</span>{% endif %}
     {% elif non_collegato %}<span class="chip err">Non collegato</span>
     {% elif con_errore %}<span class="chip err">Errore</span>
-    {% elif circoli is defined %}<span class="chip ok">{{ circoli.circoli | migliaia }} circoli</span>
+    {% elif circoli is defined %}<span class="chip ok">Collegato</span>
     {% endif %}
   </div>
 
@@ -46,21 +46,11 @@
     {% if con_errore %}
       <p class="aiuto"><strong>{{ circoli.errore }}</strong>{% if circoli.rimedio %}<br>{{ circoli.rimedio }}{% endif %}</p>
     {% else %}
-      <p class="aiuto">TASK non è ancora collegato al DB circoli. Incolla il codice di accesso che ti ha dato
-        chi gestisce TASK: si inserisce una volta sola su questo computer.</p>
+      <p class="aiuto">TASK non è collegato al DB.</p>
     {% endif %}
-    <details class="aggiorna-dati" {{ 'open' if non_collegato }}>
-      <summary>{{ 'Collega il DB circoli' if non_collegato else 'Ricollega il DB circoli (codice nuovo)' }}</summary>
-      <form class="form-guidato" method="post" action="{{ url_for('collega_db_circoli') }}" data-attesa="Provo il collegamento…">
-        <div class="campo" data-etichetta="Codice di accesso">
-          <input type="password" name="token" required autocomplete="off">
-        </div>
-        <div class="invio">
-          <button type="submit" class="btn btn-primario">Collega {{ icona('freccia') }}</button>
-          <p class="mancanti" aria-live="polite"></p>
-        </div>
-      </form>
-    </details>
+    <div class="azioni">
+      <a class="btn btn-secondario" href="{{ url_for('index') }}">Vai alla pagina iniziale per collegare TASK</a>
+    </div>
   {% elif circoli is defined %}
     <div class="riepilogo">
       <div><p class="dato-etichetta">Archivio</p><p class="dato-valore">DB circoli online</p></div>
@@ -71,7 +61,7 @@
     <p class="aiuto">I circoli non trovati durante un torneo si scaricano dalla pagina finale dell'elaborazione.</p>
   {% endif %}
 
-  {% if circoli_mancanti or (not pagina_finale and circoli is defined and circoli.circoli is defined) %}
+  {% if circoli_mancanti or (not pagina_finale and circoli is defined and circoli.collegato and circoli.errore is not defined) %}
   <details class="aggiorna-dati" {{ 'open' if pagina_finale }}>
     <summary>Carica il file dei circoli compilato</summary>
     <form class="form-guidato" method="post" action="{{ url_for('aggiungi_circoli') }}" enctype="multipart/form-data"

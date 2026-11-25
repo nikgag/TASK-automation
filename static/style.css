@@ -169,6 +169,21 @@ main.largo   { max-width: 1040px; }
 .app-azione { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; font-weight: 650; color: var(--accent); }
 .app-azione svg { width: 18px; height: 18px; transition: transform .15s ease; }
 .app-card:hover .app-azione svg { transform: translateX(3px); }
+/* home senza codice di accesso valido: schede spente e riquadro per collegarsi */
+.app-card.disattivata { opacity: .45; pointer-events: none; box-shadow: none; }
+.collega-db { margin-bottom: 24px; }
+.stato-db { margin-top: 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+.stato-db .aiuto { flex-basis: 100%; margin: 0; }
+.avviso-db { margin: 0 0 16px; }
+/* popup del codice di accesso (index) */
+.dialogo-codice {
+  width: min(460px, calc(100% - 32px)); padding: 24px;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--ombra);
+}
+.dialogo-codice::backdrop { background: rgba(0, 0, 0, .45); }
+.dialogo-codice .errore-codice { color: var(--err); }
+.dialogo-chiudi { margin-top: 12px; }
 
 .passi {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;

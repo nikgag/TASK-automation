@@ -43,6 +43,8 @@ _CONFIG_DIR = (Path(os.environ["LOCALAPPDATA"]) / "TASK" if sys.platform == "win
                else Path.home() / "Library" / "Application Support" / "TASK" if sys.platform == "darwin"
                else Path.home() / ".local" / "share" / "TASK")
 CONFIG_DB_CIRCOLI = _CONFIG_DIR / "db_circoli.json"
+# impostazioni dell'utente (quote FIT), anche queste fuori dal progetto (core/impostazioni.py)
+IMPOSTAZIONI_UTENTE = _CONFIG_DIR / "impostazioni.json"
 # indirizzo del portinaio (strumenti/apps_script/circoli.gs). Pubblico di proposito: senza un codice
 # di accesso valido risponde solo Err 61. Per aggiornare lo script usare "Gestisci deployment ->
 # Modifica -> Nuova versione": un deployment NUOVO cambia l'indirizzo e servirebbe una nuova versione di TASK.
@@ -80,6 +82,8 @@ REGIONI_ITALIANE = [
 # ---   CAMPIONATO A SQUADRE ----
 
 DIR_PDF_CS = UPLOAD_DIR / "campionati"
+# file caricati ed elaborati (upload/, output/) tenuti per questi giorni, poi tolti all'avvio (core/pulizia.py)
+GIORNI_FILE_TEMPORANEI = 14
 
 INTESTAZIONI= {"Squadra", "Tipo Palle", "Indirizzo Campi", "Città Campi", "Superficie", "Campo Riserva", "Superficie campo principale", "Superficie Campo Riserva", " "}
 
@@ -118,6 +122,7 @@ COLORE_PASTELLO_VARIATO = "FFFFFFBA"      # giallo pastello (variati)
 COLORE_PASTELLO_STRANIERO = "FFBAE1FF"    # blu pastello (stranieri)
 
 # QUOTE FITP (VARIANO DI ANNO IN ANNO) 
+# valori di partenza: quelli veri li imposta l'utente (core/impostazioni.py) e sostituiscono questi
 CATEGORIE_UNDER = ["U10", "U12", "U14", "U16","Under 10", "Under 12", "Under 14", "Under 16"]
 QUOTA_FIT_UNDER = 4.5
 QUOTA_FIT_OVER = 9.0
